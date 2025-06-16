@@ -1,0 +1,44 @@
+# Composer dependencies
+/vendor/
+
+# Composer-related files
+!composer.json
+composer.lock
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+/nbproject/
+/.phpstorm.meta.php
+
+# Logs and temp files
+*.log
+*.cache
+*.tmp
+*.swp
+*.bak
+.cache/
+.tmp/
+.phpunit.result.cache
+logs/
+.phpcs-cache
+phpmock-*
+
+# Ignore environment files
+.env
+.env.*
+
+# Coverage reports
+html-coverage/
+xml-coverage/
+coverage/
+
+# Documentation and tools
+doc/
+tools/
