@@ -1,5 +1,5 @@
 {
-    "name": "pac/http",
+    "name": "pac/lean-http",
     "version": "0.0.1",
     "description": "A lean, modern, and standards-compliant PSR-7 HTTP message library for PHP. Includes robust URI normalization, validation, and building — without routers, middleware, or extra dependencies.",
     "type": "stable",
