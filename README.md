@@ -3,6 +3,7 @@
 ![PHP Version](https://img.shields.io/badge/php-%3E%3D8.3-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![WIP](https://img.shields.io/badge/status-work--in--progress-orange)
+[![codecov](https://codecov.io/gh/pedroac/lean-http/graph/badge.svg?token=OIB8SVF1NO)](https://codecov.io/gh/pedroac/lean-http)
 [![Buy Me a Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-yellow)](https://www.buymeacoffee.com/pedroac)
 
 A fast, developer-friendly [PSR-7](https://www.php-fig.org/psr/psr-7/) HTTP message library, focused on robust URI handling, message validation, and convenient request/response operations. Designed for modern PHP applications that need a lightweight, standards-compliant foundation for HTTP messaging.
