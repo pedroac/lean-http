@@ -25,4 +25,17 @@
             <directory suffix=".php">src</directory>
         </include>
     </source>
+    <coverage pathCoverage="false"
+            ignoreDeprecatedCodeUnits="true"
+            disableCodeCoverageIgnore="true">
+            <report>
+                <clover outputFile="coverage/clover.xml"/>
+                <cobertura outputFile="coverage/cobertura.xml"/>
+                <crap4j outputFile="coverage/crap4j.xml" threshold="50"/>
+                <html outputDirectory="html-coverage" lowUpperBound="50" highLowerBound="90"/>
+                <php outputFile="coverage/coverage.php"/>
+                <text outputFile="coverage/coverage.txt" showUncoveredFiles="false" showOnlySummary="true"/>
+                <xml outputDirectory="xml-coverage"/>
+            </report>
+    </coverage>
 </phpunit>

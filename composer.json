@@ -33,6 +33,6 @@
     ],
     "scripts": {
         "test": "./vendor/phpunit/phpunit/phpunit tests/",
-        "coverage": "./vendor/phpunit/phpunit/phpunit -c phpunit.coverage.xml"
+        "coverage": "XDEBUG_MODE=coverage ./vendor/phpunit/phpunit/phpunit -c phpunit.coverage.xml"
     }
 }
