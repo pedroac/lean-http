@@ -37,3 +37,14 @@ jobs:
 
     - name: Run test suite
       run: composer run-script test
+
+    - name: Install Xdebug
+      run: sudo apt-get install php-xdebug
+
+    - name: Run coverage
+      run: composer run-script coverage
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: coverage/clover.xml
