@@ -211,10 +211,10 @@ class UploadedFile implements UploadedFileInterface
 	public function getStream(): StreamInterface 
     {
         if ($this->moved) {
-            throw new \RuntimeException('Cannot retrieve stream after file has been moved.');
+            throw new RuntimeException('Cannot retrieve stream after file has been moved.');
         }
         if ($this->error !== UPLOAD_ERR_OK) {
-            throw new \RuntimeException('Cannot retrieve stream due to upload error.');
+            throw new RuntimeException('Cannot retrieve stream due to upload error.');
         }
         return $this->stream;
     }
@@ -239,7 +239,7 @@ class UploadedFile implements UploadedFileInterface
             throw new RuntimeException("The uploaded file `$this->filePath` was already moved.");
         }
         if ($this->error !== UPLOAD_ERR_OK) {
-            throw new \RuntimeException('Cannot move file due to upload error.');
+            throw new RuntimeException('Cannot move file due to upload error.');
         }
         if (!move_uploaded_file($this->filePath, $targetPath)) {
             throw new RuntimeException("Failed to move uploaded file `$this->filePath` to `$targetPath`.");

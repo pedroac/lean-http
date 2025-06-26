@@ -71,7 +71,7 @@ class UploadedFileTest extends TestCase
 
     public function testConstructorThrowsExceptionIfFileNotFound(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         new UploadedFile(
             '/invalid/path/file.txt',
             'example.txt',
@@ -84,7 +84,7 @@ class UploadedFileTest extends TestCase
     public function testConstructorThrowsExceptionIfNotUploadedFile(): void
     {
         $this->isUploadedFileMock->disable();
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         new UploadedFile(
             $this->tmpFile,
             'example.txt',
