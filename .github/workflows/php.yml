@@ -43,6 +43,9 @@ jobs:
 
     - name: Run coverage
       run: composer run-script coverage
+    
+    - name: List coverage directory
+      run: ls -l coverage
 
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v5
