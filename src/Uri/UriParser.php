@@ -27,15 +27,16 @@ class UriParser
      * The URI string to parse (e.g., 'http://example.com/path?query#fragment').
      * The URI should be a valid absolute URI.
      * If the URI is relative, it will be resolved against the base URI provided in the constructor.
-     * @return array|int|string|null
+     * @return array<string, int|string|null>
      * Returns an associative array with the components of the URI.
      * The array may contain keys like 'scheme', 'host', 'port', 'path', 'query', and 'fragment'.
      * If the URI is invalid, it throws an `InvalidArgumentException`.
      */
-    public function parse(string $uri)
+    public function parse(string $uri): array
     {
         $parsed = $this->parseComponent($uri);
-        return $parsed;
+
+        return is_array($parsed) ? $parsed : [];
     }
 
     /**
@@ -54,7 +55,7 @@ class UriParser
      * If set to -1, it will return all components as an associative array.
      * @throws \InvalidArgumentException
      * If the URI is invalid or cannot be parsed, an `InvalidArgumentException` is thrown.
-     * @return array|bool|int|string|null
+     * @return array<string, int|string|null>|string|int|null
      * Returns the parsed component of the URI.
      * If `$componentType` is -1, it returns an associative array with all components.
      * If `$componentType` is specified, it returns the specific component as a string, integer, or null.
@@ -65,6 +66,7 @@ class UriParser
         if ($parsed === false) {
             throw new \InvalidArgumentException("Invalid URI.");
         }
+
         return $parsed;
     }
 
@@ -83,7 +85,9 @@ class UriParser
      */
     public function parseScheme(string $uri): string
     {
-        return strtolower($this->parseComponent($uri, PHP_URL_SCHEME) ?? '');
+        $scheme = $this->parseComponent($uri, PHP_URL_SCHEME);
+
+        return is_string($scheme) ? strtolower($scheme) : '';
     }
 
     /**
@@ -104,7 +108,11 @@ class UriParser
         if ($user === null) {
             return '';
         }
-        return $pass !== null ? "$user:$pass" : $user;
+
+        $userStr = is_string($user) ? $user : "";
+        $passStr = is_string($pass) ? $pass : "";
+
+        return $pass !== null ? "$userStr:$passStr" : $userStr;
     }
 
     /**
@@ -121,7 +129,9 @@ class UriParser
      */
     public function parseHost(string $uri): string
     {
-        return strtolower($this->parseComponent($uri, PHP_URL_HOST) ?? '');
+        $host = $this->parseComponent($uri, PHP_URL_HOST);
+
+        return is_string($host) ? strtolower($host) : '';
     }
 
     /**
@@ -131,14 +141,16 @@ class UriParser
      * @param string $uri
      * The URI string to parse (e.g., 'http://example.com:8080/path?query#fragment').
      * The URI should be a valid absolute URI.
-     * @return array|bool|int|string|null
      * Returns the port number as an integer.
      * If the port is not present, it returns null.
-     * If the port is invalid, it returns false.
+     * @return int|null
      */
     public function parsePort(string $uri): ?int
     {
-        return $this->parseComponent($uri, PHP_URL_PORT);
+        /** @var int|null $port */
+        $port = $this->parseComponent($uri, PHP_URL_PORT);
+
+        return $port;
     }
 
     /**
@@ -150,14 +162,16 @@ class UriParser
      * @param string $uri
      * The URI string to parse (e.g., 'http://example.com/path?query#fragment').
      * The URI should be a valid absolute URI.
-     * @return array|bool|int|string|null
      * Returns the path of the URI as a string.
      * If the path is not present, it returns an empty string.
-     * If the path is invalid, it returns false.
+     * @return string
      */
     public function parsePath(string $uri): string
     {
-        return $this->parseComponent($uri, PHP_URL_PATH) ?? '';
+        /** @var string|null $path */
+        $path = $this->parseComponent($uri, PHP_URL_PATH);
+
+        return $path ?? '';
     }
 
     /**
@@ -169,14 +183,16 @@ class UriParser
      * @param string $uri
      * The URI string to parse (e.g., 'http://example.com/path?query=string#fragment').
      * The URI should be a valid absolute URI.
-     * @return array|bool|int|string|null
      * Returns the query string of the URI as a string.
      * If the query string is not present, it returns null.
-     * If the query string is invalid, it returns false.
+     * @return string|null
      */
     public function parseQuery(string $uri): ?string
     {
-        return $this->parseComponent($uri, PHP_URL_QUERY);
+        /** @var string|null $query */
+        $query = $this->parseComponent($uri, PHP_URL_QUERY);
+
+        return $query;
     }
 
     /**
@@ -187,13 +203,15 @@ class UriParser
      * If the fragment is not present, it returns null.
      * @param string $uri
      * The URI string to parse (e.g., 'http://example.com/path?query#fragment').
-     * @return array|bool|int|string|null
      * Returns the fragment of the URI as a string.
      * If the fragment is not present, it returns null.
-     * If the fragment is invalid, it returns false.
+     * @return string|null
      */
     public function parseFragment(string $uri): ?string
     {
-        return $this->parseComponent($uri, PHP_URL_FRAGMENT);
+        /** @var string|null $fragment */
+        $fragment = $this->parseComponent($uri, PHP_URL_FRAGMENT);
+
+        return $fragment;
     }
 }

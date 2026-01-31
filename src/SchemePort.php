@@ -9,7 +9,8 @@ namespace Pac\LeanHttp;
  * This enum provides a mapping between URI schemes and their default port numbers.
  * It can be used to retrieve the port number for a given scheme or to check if a scheme has a defined port.
  */
-enum SchemePort: int {
+enum SchemePort: int
+{
     case HTTP = 80;
     case HTTPS = 443;
     case FTP = 21;
@@ -36,8 +37,8 @@ enum SchemePort: int {
      * This method returns the default port number associated with the scheme.
      * If the scheme does not have a defined port, it returns null.
      *
-     * @return int|null
-     * The default port number or null if not defined.
+     * @return static|null
+     * The SchemePort instance or null if not defined.
      */
     public static function fromScheme(string $scheme): ?static
     {

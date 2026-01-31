@@ -6,8 +6,8 @@ namespace Pac\LeanHttp\Tests;
 
 use Pac\LeanHttp\Message;
 use Pac\LeanHttp\Response;
-use Psr\Http\Message\StreamInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\StreamInterface;
 
 class ResponseTest extends TestCase
 {
@@ -20,7 +20,7 @@ class ResponseTest extends TestCase
 
     public function testResponseInitialization(): void
     {
-        $response = new Response(200,$this->mockStream,  [], 'OK', '1.1');
+        $response = new Response(200, $this->mockStream, [], 'OK', '1.1');
         $this->assertEquals(200, $response->getStatusCode());
         $this->assertEquals('OK', $response->getReasonPhrase());
         $this->assertEquals('1.1', $response->getProtocolVersion());
@@ -28,7 +28,7 @@ class ResponseTest extends TestCase
 
     public function testResponseInitializationWithDefaultArguments(): void
     {
-        $response = new Response(200,$this->mockStream,  []);
+        $response = new Response(200, $this->mockStream, []);
         $this->assertEquals(200, $response->getStatusCode());
         $this->assertEquals('OK', $response->getReasonPhrase());
         $this->assertEquals(Message::DEFAULT_PROTOCOL_VERSION, $response->getProtocolVersion());
@@ -36,7 +36,7 @@ class ResponseTest extends TestCase
 
     public function testGetReasonPhrase(): void
     {
-        $response = new Response(404,  $this->mockStream, [], 'Not Found', '1.1');
+        $response = new Response(404, $this->mockStream, [], 'Not Found', '1.1');
         $this->assertEquals('Not Found', $response->getReasonPhrase());
     }
 
@@ -56,7 +56,7 @@ class ResponseTest extends TestCase
 
     public function testWithStatusReturnsClonedInstance(): void
     {
-        $response = new Response(200, $this->mockStream, [],'OK', '1.1');
+        $response = new Response(200, $this->mockStream, [], 'OK', '1.1');
         $newResponse = $response->withStatus(404, 'Not Found');
         $this->assertEquals(404, $newResponse->getStatusCode());
         $this->assertEquals('Not Found', $newResponse->getReasonPhrase());

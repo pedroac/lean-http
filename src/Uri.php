@@ -11,9 +11,9 @@ use Psr\Http\Message\UriInterface;
 
 /**
  * Value object representing a normalized URL.
- * 
- * It garantees all the components are normalized, and the instances return normalized URI string representations. 
- * 
+ *
+ * It guarantees all components are normalized, and instances return normalized URI string representations.
+ *
  * @link http://tools.ietf.org/html/rfc3986 (the URI specification)
  * @link https://url.spec.whatwg.org/
  */
@@ -28,7 +28,7 @@ class Uri implements UriInterface
      * Lazy initialized authority.
      */
     private ?string $authority = null;
-    
+
     /**
      * The user component or an empty string.
      */
@@ -38,23 +38,23 @@ class Uri implements UriInterface
      * The password component or NULL.
      */
     private ?string $password = null;
-    
+
     /**
      * The host (name, IPv4 or IPv6) or an empty string.
      */
     private string $host = '';
-    
+
     /**
      * The port number or NULL.
      */
     private ?int $port = null;
-    
+
     /**
      * The path component or an empty string.
      * @var string
      */
     private string $path = '';
-    
+
     /**
      * The query component or NULL.
      */
@@ -63,11 +63,12 @@ class Uri implements UriInterface
     /**
      * The query parameters as an associative array or NULL.
      * This is lazy initialized when the query is set.
+     * @var array<int|string, mixed>|null
      */
     private ?array $params = null;
-    
+
     /**
-     * The fragment componet or NULL.
+     * The fragment component or NULL.
      */
     private ?string $fragment = null;
 
@@ -78,26 +79,18 @@ class Uri implements UriInterface
 
     /**
      * Constructor to initialize the URI from a string.
-     * This constructor parses the provided URL string and initializes the URI components.
-     * It uses the UriNormalizer to ensure all components are normalized according to the URI specification.
-     * @param string $string
-     * The URL string to normalize (e.g., 'http://example.com/path?query#fragment').
-     * @throws \InvalidArgumentException
-     * If the URL is invalid or cannot be parsed, an exception is thrown.
-     * This constructor parses the URL string and initializes the URI components.
-     * It uses the UriNormalizer to ensure all components are normalized according to the URI specification.
-     * The components include scheme, host, user info, password, port, path, query, and fragment.
-     * The scheme and host are normalized to lowercase, the path is normalized to ensure it starts with a slash,
-     * the query is normalized to ensure it is properly encoded, and the fragment is normalized to ensure it is encoded.
-     * If the URL string cannot be parsed, an `InvalidArgumentException` is thrown.
+     *
+     * Parses and normalizes the URI string according to RFC 3986 and WHATWG URL standards.
+     * All components (scheme, host, path, query, fragment) are automatically normalized.
+     *
+     * @param string $string The URL string to normalize (e.g., 'http://example.com/path?query#fragment')
+     * @throws \InvalidArgumentException If the URL is invalid or cannot be parsed
      * @see \Pac\LeanHttp\Uri\UriNormalizer
-     * @see \Pac\LeanHttp\Uri\UriValidator
-     * @see \Pac\LeanHttp\Uri\UriParser
-     * @see \Psr\Http\Message\UriInterface
      * @see https://tools.ietf.org/html/rfc3986
      * @see https://url.spec.whatwg.org/
      */
-    public function __construct(string $string) {
+    public function __construct(string $string)
+    {
         $parts = parse_url($string);
         if ($parts === false) {
             throw new \InvalidArgumentException("Invalid URL: $string.");
@@ -120,13 +113,9 @@ class Uri implements UriInterface
     /**
      * Return the string representation of the normalized URL.
      *
-     * @return string
-     * This method builds the normalized URI string representation using the UriBuilder.
-     * It constructs the URI with the scheme, host, path, query, fragment, port, user, and password components.
-     * The path is prefixed with a slash if it does not already start with one.
-     * If the string representation has already been built, it returns the cached value.
-     * @see \Pac\LeanHttp\Uri\UriBuilder::buildRaw()
-     * @see \Pac\LeanHttp\Uri\UriBuilder
+     * The string is lazily computed and cached for performance.
+     *
+     * @return string The normalized URI string
      */
     public function __toString(): string
     {
@@ -134,7 +123,7 @@ class Uri implements UriInterface
             $this->string = (new UriBuilder(
                 $this->scheme,
                 $this->host,
-                !isset($this->path[0]) || $this->path[0] !== '/' ? "/$this->path" : $this->path,
+                str_starts_with($this->path, '/') ? $this->path : "/$this->path",
                 $this->query,
                 $this->fragment,
                 (UriNormalizer::getDefault())->normalizePort($this->port, $this->scheme),
@@ -142,58 +131,57 @@ class Uri implements UriInterface
                 $this->password
             ))->buildRaw();
         }
+
         return $this->string;
     }
 
     /**
      * Check if this URI is equal to another value.
-     * @param mixed $compared The other value that should be compared.
-     * @return bool
-     * Returns true if the compared value is an instance of UriInterface and has the same string representation,
-     * or if it is a string or a stringable object that, when converted to a string, matches the string representation of this instance.
-     * If the compared value is not a UriInterface instance, a string, or a stringable object, it returns false.
+     *
+     * @param mixed $other The value to compare (UriInterface, string, or stringable object)
+     * @return bool True if the URIs are equal after normalization
      */
     public function equals($other): bool
     {
-        if ($other instanceof Uri) {
+        if ($other instanceof self) {
             return $other->string === $this->string;
         }
         if (is_string($other) || method_exists($other, '__toString')) {
-            return (string)(new static($other)) === $this->string;
+            return (string)(new self((string)$other)) === $this->string;
         }
+
         return false;
     }
 
     /**
      * Return the normalized authority component of the URI or an empty string.
      *
-     * @return string
-     * This method returns the authority in the format "user:password@host:port".
-     * If the user and password are not set, it returns "host:port" or just "host" if no port is provided.
-     * If the host is not set, it returns an empty string.
-     * @see \Pac\LeanHttp\Uri\UriBuilder::buildAuthority()
+     * Format: "user:password@host:port" or "host:port" or "host" or empty string.
+     * The authority is lazily computed and cached for performance.
+     *
+     * @return string The authority component
      */
     public function getAuthority(): string
     {
-        if (!isset($this->authority)) {
+        if (! isset($this->authority)) {
             $this->authority = (new UriBuilder(
                 $this->scheme,
                 $this->host,
                 $this->path,
                 port: $this->port,
-                user: $this->user, 
-                password: $this->password)
+                user: $this->user,
+                password: $this->password
+            )
             )->buildAuthority();
         }
+
         return $this->authority;
     }
 
     /**
      * Return the scheme component of the URI or an empty string.
      *
-     * @return string
-     * This method returns the scheme as it was provided, or an empty string if not set.
-     * If the scheme is not set, it returns an empty string.
+     * @return string The scheme (e.g., 'http', 'https') or empty string
      */
     public function getScheme(): string
     {
@@ -203,13 +191,9 @@ class Uri implements UriInterface
     /**
      * Return the user information component of the URI or an empty string.
      *
-     * @return string
-     * This method returns the user info in the format "user:password".
-     * If the password is not set, it returns just the user name.
-     * If both user and password are empty, it returns an empty string.
-     * @see \Pac\LeanHttp\Uri\UriNormalizer::normalizeUserInfo()
-     * @see \Pac\LeanHttp\Uri\UriBuilder::buildUserInfo()
-     * @see \Pac\LeanHttp\Uri\UriBuilder::buildAuthority()
+     * Format: "user:password" or "user" or empty string.
+     *
+     * @return string The user info component
      */
     public function getUserInfo(): string
     {
@@ -218,11 +202,9 @@ class Uri implements UriInterface
 
 
     /**
-     * Return the host component ot the URI or an empty string.
+     * Return the host component of the URI or an empty string.
      *
-     * @return string
-     * This method returns the host as it was provided, or an empty string if not set.
-     * If the host is not set, it returns an empty string.
+     * @return string The host (domain name, IPv4, or IPv6) or empty string
      */
     public function getHost(): string
     {
@@ -231,17 +213,10 @@ class Uri implements UriInterface
 
     /**
      * Return the port of the URI or null.
-     * 
-     * If the port is the standard used with the current scheme, this method returns null.
-     * If no port is present, this method returns null.
      *
-     * @return int|null
-     * This method returns the port number if it is set and not the standard port for the scheme.
-     * If the port is not set or is the standard port for the scheme, it returns null.
-     * @throws \InvalidArgumentException
-     * If the port is not null and is not a valid port number (0-65535), an exception is thrown.
-     * @see \Pac\LeanHttp\Uri\UriValidator::validatePort()
-     * @see \Pac\LeanHttp\Uri\UriNormalizer::normalizePort()
+     * Returns null if the port is the standard port for the scheme (80 for http, 443 for https).
+     *
+     * @return int|null The port number (0-65535) or null
      */
     public function getPort(): ?int
     {
@@ -251,9 +226,7 @@ class Uri implements UriInterface
     /**
      * Return the path component of the URI or an empty string.
      *
-     * @return string
-     * This method returns the path as it was provided, or an empty string if not set.
-     * If the path is not set, it returns an empty string.
+     * @return string The path component
      */
     public function getPath(): string
     {
@@ -263,9 +236,7 @@ class Uri implements UriInterface
     /**
      * Return the normalized query component of the URI or an empty string.
      *
-     * @return string
-     * This method returns the query string as it was provided, or an empty string if not set.
-     * If the query string is not set, it returns an empty string.
+     * @return string The query string (without leading '?') or empty string
      */
     public function getQuery(): string
     {
@@ -275,8 +246,9 @@ class Uri implements UriInterface
     /**
      * Return the query parameters of the URI as an associative array.
      *
-     * @return array
-     * This method parses the query string if it has not been parsed yet.
+     * Query parameters are lazily parsed and cached for performance.
+     *
+     * @return array<int|string, mixed> Associative array of query parameters
      */
     public function getQueryParams(): array
     {
@@ -284,16 +256,20 @@ class Uri implements UriInterface
             return [];
         }
         if ($this->params === null) {
-            parse_str($this->query ?? '', $this->params);
+            $this->params = [];
+            if ($this->query !== null && $this->query !== '') {
+                parse_str($this->query, $this->params);
+                $this->params = $this->params ?? [];
+            }
         }
+
         return $this->params;
     }
 
     /**
      * Return the normalized fragment of the URI string.
      *
-     * @return string
-     * This method returns the fragment component of the URI or an empty string if not set.
+     * @return string The fragment (without leading '#') or empty string
      */
     public function getFragment(): string
     {
@@ -303,12 +279,9 @@ class Uri implements UriInterface
     /**
      * Return an instance with the specified scheme component.
      *
-     * @param string $scheme
-     * @throws \InvalidArgumentException
-     * This method throws an exception if the scheme is invalid or not allowed.
-     * @return \Psr\Http\Message\UriInterface
-     * This method returns a new instance with the specified scheme.
-     * The scheme is normalized to lowercase and must conform to the URI specification.
+     * @param string $scheme The scheme (e.g., 'http', 'https')
+     * @return static A new instance with the specified scheme
+     * @throws \InvalidArgumentException If the scheme is invalid
      */
     public function withScheme(string $scheme): self
     {
@@ -316,20 +289,16 @@ class Uri implements UriInterface
         $clone->scheme = (UriNormalizer::getDefault())->normalizeScheme($scheme);
         // Reset the string representation and authority to force regeneration.
         $clone->string = null;
+
         return $clone;
     }
 
     /**
      * Return an instance with the specified user information component.
      *
-     * @param string $user
-     * The user name to use for authority or an empty string.
-     * @param ?string $password
-     * The password associated with $user or null.
-     * @return \Psr\Http\Message\UriInterface
-     * This method returns a new instance with the specified user information.
-     * If the password is not provided, only the user name is included.
-     * If both user and password are empty, the user info is set to an empty string.
+     * @param string $user The user name
+     * @param ?string $password The password or null
+     * @return static A new instance with the specified user information
      */
     public function withUserInfo(string $user, ?string $password = null): self
     {
@@ -339,18 +308,16 @@ class Uri implements UriInterface
         // Reset the string representation and authority to force regeneration.
         $clone->string = null;
         $clone->authority = null;
+
         return $clone;
     }
 
     /**
      * Return an instance with the specified host component.
      *
-     * @param string $host The host to use with the new instance or an empty string.
-     * @throws \InvalidArgumentException
-     * This method throws an exception if the host is invalid or not allowed.
-     * @return \Psr\Http\Message\UriInterface
-     * This method returns a new instance with the specified host.
-     * The host is normalized to ensure it conforms to the URI specification.
+     * @param string $host The host (domain name, IPv4, or IPv6) or empty string
+     * @return static A new instance with the specified host
+     * @throws \InvalidArgumentException If the host is invalid
      */
     public function withHost(string $host): self
     {
@@ -359,41 +326,35 @@ class Uri implements UriInterface
         // Reset the string representation and authority to force regeneration.
         $clone->string = null;
         $clone->authority = null;
+
         return $clone;
     }
 
     /**
      * Return an instance with the specified port component.
      *
-     * @param mixed $port The port to use with the new instance or null.
-     * @throws \InvalidArgumentException
-     * This method throws an exception if the port is not null and is not a valid port number (0-65535).
-     * @return \Psr\Http\Message\UriInterface
-     * This method returns a new instance with the specified port.
-     * If the port is not null, it must be a valid port number (0-65535).
-     * If the port is null, it indicates that no port is specified.
-     * If the port is the standard port for the scheme, it will be normalized to null.
+     * @param ?int $port The port number (0-65535) or null
+     * @return static A new instance with the specified port
+     * @throws \InvalidArgumentException If the port is not in the valid range
      */
     public function withPort(?int $port): self
     {
-        if ($port !== null && !(UriValidator::getDefault())->validatePort($port)) {
+        if ($port !== null && ! (UriValidator::getDefault())->validatePort($port)) {
             throw new \InvalidArgumentException("Invalid URI port: $port.");
         }
         $clone = clone $this;
         $clone->port = $port;
         // Reset the string representation to force regeneration.
         $clone->string = null;
+
         return $clone;
     }
 
     /**
      * Return an instance with the specified path component.
      *
-     * @param string $path
-     * The path to use with the new instance.
-     * @return \Psr\Http\Message\UriInterface
-     * This method returns a new instance with the specified path.
-     * The path is normalized to ensure it conforms to the URI specification.
+     * @param string $path The path component
+     * @return static A new instance with the specified path
      */
     public function withPath(string $path): self
     {
@@ -401,16 +362,15 @@ class Uri implements UriInterface
         $clone->path = (UriNormalizer::getDefault())->normalizePath($path);
         // Reset the string representation to force regeneration.
         $clone->string = null;
+
         return $clone;
     }
 
     /**
      * Return an instance with the specified query component.
      *
-     * @param string $query
-     * The query string to use with the new instance.
-     * It can be empty, in which case the query component will be set to an empty string.
-     * @return static
+     * @param string $query The query string (without leading '?')
+     * @return static A new instance with the specified query
      */
     public function withQuery(string $query): self
     {
@@ -419,18 +379,15 @@ class Uri implements UriInterface
         // Reset the string representation and query parameters to force regeneration.
         $clone->string = null;
         $clone->params = null;
+
         return $clone;
     }
 
     /**
-     * Return an instance with the specified query paramenters.
+     * Return an instance with the specified query parameters.
      *
-     * @param array $params
-     * The query parameters to use with the new instance.
-     * @return \Psr\Http\Message\UriInterface
-     * This method returns a new instance with the specified query parameters.
-     * The query string is normalized to ensure it conforms to the URI specification.
-     * If the parameters are empty, the query component will be set to an empty string.
+     * @param array<string, mixed> $params Associative array of query parameters
+     * @return static A new instance with the specified query parameters
      */
     public function withQueryParams(array $params): self
     {
@@ -438,20 +395,15 @@ class Uri implements UriInterface
             http_build_query($params, '', '&', \PHP_QUERY_RFC3986)
         );
         $uri->params = $params;
+
         return $uri;
     }
 
     /**
-     * Return an instance with the specified fragrament component.
+     * Return an instance with the specified fragment component.
      *
-     * @param string $fragment
-     * The fragment to use with the new instance.
-     * It can be an empty string, in which case the fragment component will be set to an empty string.
-     * @throws \InvalidArgumentException
-     * This method throws an exception if the fragment is invalid.
-     * @return \Psr\Http\Message\UriInterface
-     * This method returns a new instance with the specified fragment.
-     * The fragment is normalized to ensure it conforms to the URI specification.
+     * @param string $fragment The fragment (without leading '#')
+     * @return static A new instance with the specified fragment
      */
     public function withFragment(string $fragment): self
     {
@@ -459,32 +411,31 @@ class Uri implements UriInterface
         $clone->fragment = (UriNormalizer::getDefault())->normalizeEncode($fragment);
         // Reset the string representation to force regeneration.
         $clone->string = null;
+
         return $clone;
     }
 
     /**
      * Check if the URI is opaque.
-     * An opaque URI has a scheme but no authority component.
-     * @return bool
-     * An opaque URI is one where the path does not start with a slash and there is no authority component.
-     * This means the URI is not hierarchical and does not have a host, port, or user info.
+     *
+     * An opaque URI has a scheme but no authority component and the path doesn't start with '/'.
+     *
+     * @return bool True if the URI is opaque
      */
     public function isOpaque(): bool
     {
         return $this->scheme
-            && !$this->getAuthority()
+            && ! $this->getAuthority()
             && strpos($this->path, '/') !== 0;
     }
 
     /**
      * Check if the URI is absolute.
-     * An absolute URI has a scheme and a host component.
-     * @return bool
-     * Returns true if the URI is absolute, false otherwise.
-     * An absolute URI is one that includes a scheme (like 'http', 'https', 'ftp', etc.) and a host (like 'example.com').
-     * This means the URI can be resolved independently of any base URI.
+     *
+     * An absolute URI has both a scheme and a host component.
+     *
+     * @return bool True if the URI is absolute
      * @see https://tools.ietf.org/html/rfc3986#section-4.3
-     * @see https://url.spec.whatwg.org/#absolute-url-string
      */
     public function isAbsolute(): bool
     {
@@ -493,41 +444,31 @@ class Uri implements UriInterface
 
     /**
      * Resolve a relative URI against this base URI.
-     * This method returns a new instance with the resolved URI.
-     * The base URI must be absolute, otherwise an exception is thrown.
-     * The instance calling this method is considered the base URI, 
-     * and the provided URI is the relative URI to resolve against it.
+     *
+     * Follows RFC 3986 section 5.2 for URI resolution.
+     *
+     * @param UriInterface $uri The relative URI to resolve
+     * @return self A new instance with the resolved URI
+     * @throws \InvalidArgumentException If the base URI is not absolute
      * @see https://tools.ietf.org/html/rfc3986#section-5.2
-     * @param \Psr\Http\Message\UriInterface $uri
-     * The relative URI to resolve against this base URI.
-     * @throws \InvalidArgumentException
-     * If the base URI is not absolute, an exception is thrown.
-     * If the relative URI has a scheme, it is returned as is.
-     * @return UriInterface
-     * Returns a new instance with the resolved URI.
-     * If the relative URI has a host, it is resolved with the scheme of the base URI.
-     * If the relative URI has no host, it is resolved with the scheme and host of the base URI.
      */
     public function resolve(UriInterface $uri): self
     {
-        if (!$this->isAbsolute()) {
+        if (! $this->isAbsolute()) {
             throw new \InvalidArgumentException("Base URI must be absolute.");
         }
         if ($uri->getScheme() !== '') {
-            return $uri;
+            return new self((string)$uri);
         }
         if ($uri->getHost() !== '') {
-            return $uri->withScheme($this->scheme);
+            return new self((string)$uri->withScheme($this->getScheme()));
         }
-        $clone = clone $uri;
-        $clone->scheme = $this->scheme;
-        $clone->host = $this->host;
         $path = $uri->getPath();
         if (isset($path[1]) && $path[0] === '/') {
-            $clone->path = $path;
-            return $clone;
+            return new self((string)$uri->withScheme($this->getScheme())->withHost($this->getHost())->withPort($this->getPort()));
         }
-        $clone->path = (UriNormalizer::getDefault())->normalizePath("{$this->path}/$path");
-        return $clone;
-    } 
+        $normalizedPath = (UriNormalizer::getDefault())->normalizePath("{$this->getPath()}/$path");
+
+        return new self((string)$uri->withScheme($this->getScheme())->withHost($this->getHost())->withPort($this->getPort())->withPath($normalizedPath));
+    }
 }

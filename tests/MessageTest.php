@@ -122,12 +122,12 @@ final class MessageTest extends TestCase
         yield [
             'application/json',
             '{"user": {"username": "pac", "age": 40}}',
-            ['user' => ['username' => 'pac', 'age' => 40]]
+            ['user' => ['username' => 'pac', 'age' => 40]],
         ];
         yield [
             'text/csv',
             "username,age\npac,40",
-            [['username', 'age'], ['pac', '40']]
+            [['username', 'age'], ['pac', '40']],
         ];
     }
 
@@ -137,7 +137,7 @@ final class MessageTest extends TestCase
         $stream->write('hello world');
         $message = new Message($stream, ['Content-Type' => 'text/text'], '1.1');
         $this->assertSame(
-            ['hello world'], 
+            ['hello world'],
             $message->parseBody()
         );
     }
@@ -149,7 +149,7 @@ final class MessageTest extends TestCase
         $message = new Message($stream, ['Content-Type' => 'application/json'], '1.1');
         $parsedBody = $message->parseBody();
         $this->assertSame(
-            ['name' => 'Pedro', 'age' => 41], 
+            ['name' => 'Pedro', 'age' => 41],
             $parsedBody
         );
     }
@@ -161,7 +161,7 @@ final class MessageTest extends TestCase
         $message = new Message($stream, ['Content-Type' => 'text/csv'], '1.1');
         $parsedBody = $message->parseBody();
         $this->assertSame(
-            [['name','age'],['pedro','41']], 
+            [['name','age'],['pedro','41']],
             $parsedBody
         );
     }
@@ -176,7 +176,7 @@ final class MessageTest extends TestCase
         $this->assertSame(
             '<?xml version="1.0"?>
 <root><user username="pac" age="40"/></root>
-', 
+',
             (string)$parsedBody->saveXML()
         );
     }
@@ -192,7 +192,7 @@ final class MessageTest extends TestCase
             '<?xml version="1.0" standalone="yes"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">
 <html><head><title>hello</title></head><body>world</body></html>
-', 
+',
             (string)$parsedBody->saveXML()
         );
     }

@@ -21,8 +21,8 @@ class RequestTest extends TestCase
         $this->mockBody = $this->createMock(StreamInterface::class);
         $this->mockUri = $this->createMock(UriInterface::class);
         $this->request = new Request(
-            'GET', 
-            $this->mockUri, 
+            'GET',
+            $this->mockUri,
             $this->mockBody
         );
     }

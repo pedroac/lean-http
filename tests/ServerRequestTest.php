@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Pac\LeanHttp\Tests;
 
-use Pac\LeanHttp\Uri;
 use Pac\LeanHttp\Message;
 use Pac\LeanHttp\ServerRequest;
 use Pac\LeanHttp\Stream;
+use Pac\LeanHttp\Uri;
 use phpmock\functions\FixedValueFunction;
 use phpmock\MockBuilder;
 use PHPUnit\Framework\Attributes\TestWith;
@@ -81,7 +81,7 @@ class ServerRequestTest extends TestCase
             'REQUEST_METHOD' => 'POST',
             'REQUEST_URI' => '/test/endpoint',
             'QUERY_STRING' => 'param=value',
-            'HTTP_CUSTOM_HEADER' => 'HeaderValue'
+            'HTTP_CUSTOM_HEADER' => 'HeaderValue',
         ];
         $_COOKIE = ['testCookie' => 'cookieValue'];
         $_FILES = [];
@@ -187,7 +187,7 @@ class ServerRequestTest extends TestCase
 
     public function testWithParsedBodyWithInvalidArgument()
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\InvalidArgumentException::class);
         (new ServerRequest(
             self::TEST_METHOD,
             $this->uri,
@@ -202,7 +202,7 @@ class ServerRequestTest extends TestCase
             $this->uri,
             $this->body
         );
-        $isUploadedFileMock = (new MockBuilder)
+        $isUploadedFileMock = (new MockBuilder())
             ->setNamespace('Pac\Http')
             ->setName('is_uploaded_file')
             ->setFunctionProvider(new FixedValueFunction(true))

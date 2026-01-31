@@ -15,6 +15,15 @@ use Psr\Http\Message\StreamInterface;
 class Response extends Message implements ResponseInterface
 {
     /**
+     * Minimum valid HTTP status code.
+     */
+    private const MIN_STATUS_CODE = 100;
+
+    /**
+     * Maximum valid HTTP status code.
+     */
+    private const MAX_STATUS_CODE = 599;
+    /**
      * The reason phrase for the response.
      * This is a short description of the status code.
      * It is typically used in the response status line.
@@ -28,7 +37,7 @@ class Response extends Message implements ResponseInterface
      * The HTTP status code (e.g., 200, 404).
      * @param StreamInterface $body
      * The body of the response.
-     * @param array $headers
+     * @param array<string, string[]> $headers
      * The headers of the response.
      * @param ?string $reasonPhrase
      * The reason phrase for the response (default is null).
@@ -44,7 +53,7 @@ class Response extends Message implements ResponseInterface
         ?string $protocolVersion = null,
     ) {
         if (empty($reasonPhrase)) {
-            $status = Status::tryFrom ($statusCode);
+            $status = Status::tryFrom($statusCode);
             $reasonPhrase = $status ? $status->getReasonPhrase() : '';
         }
         $this->reasonPhrase = $reasonPhrase;
@@ -53,19 +62,16 @@ class Response extends Message implements ResponseInterface
 
     /**
      * Create a response by content type.
-     * This method creates a response with the specified status code, data, headers, reason phrase, and protocol version.
-     * The data is written to the body of the response based on the content type.
-     * @param int $statusCode
-     * The HTTP status code (e.g., 200, 404).
-     * @param mixed $data
-     * The data to be written to the response body.
-     * @param array $headers
-     * The headers of the response.
-     * @param ?string $reasonPhrase
-     * The reason phrase for the response (default is null).
-     * @param ?string $protocolVersion
-     * The HTTP protocol version (default is null).
-     * @return self
+     *
+     * Automatically serializes the data to the response body based on the Content-Type header.
+     * Supports JSON, CSV, XML, HTML, and plain text.
+     *
+     * @param int $statusCode The HTTP status code (e.g., 200, 404)
+     * @param mixed $data The data to serialize to the response body
+     * @param array<string, string[]> $headers Response headers (must include Content-Type)
+     * @param ?string $reasonPhrase The reason phrase or null to use default
+     * @param ?string $protocolVersion The HTTP protocol version or null to use default
+     * @return self A new Response instance with serialized body
      */
     public static function byContentType(
         int $statusCode,
@@ -76,8 +82,10 @@ class Response extends Message implements ResponseInterface
     ): self {
         $body = Stream::fromTemporary();
         $response = new self($statusCode, $body, $headers, $reasonPhrase, $protocolVersion);
-        [$mainType] = $response->parseContentType();
+        $contentTypeParts = $response->parseContentType();
+        $mainType = $contentTypeParts[0] ?? '';
         $body->writeByContentType($data, $mainType);
+
         return $response;
     }
 
@@ -88,7 +96,7 @@ class Response extends Message implements ResponseInterface
      * @return string
      * Returns the reason phrase for the response.
      */
-    function getReasonPhrase(): string
+    public function getReasonPhrase(): string
     {
         return $this->reasonPhrase;
     }
@@ -100,7 +108,7 @@ class Response extends Message implements ResponseInterface
      * @return int
      * Returns the status code for the response.
      */
-    function getStatusCode(): int
+    public function getStatusCode(): int
     {
         return $this->statusCode;
     }
@@ -115,16 +123,20 @@ class Response extends Message implements ResponseInterface
      * @return ResponseInterface
      * Returns a new instance of the response with the updated status code and reason phrase.
      */
-    function withStatus(int $code, string $reasonPhrase = ''): ResponseInterface
+    public function withStatus(int $code, string $reasonPhrase = ''): ResponseInterface
     {
-        if ($this->statusCode < 100 || $this->statusCode > 599) {
-            throw new \InvalidArgumentException("Invalid HTTP status code:  $code. It must be between 100 and 599.");
+        if ($code < self::MIN_STATUS_CODE || $code > self::MAX_STATUS_CODE) {
+            throw new \InvalidArgumentException(
+                "Invalid HTTP status code: $code. It must be between " .
+                self::MIN_STATUS_CODE . " and " . self::MAX_STATUS_CODE . "."
+            );
         }
         $cloned = clone $this;
         $cloned->statusCode = $code;
         $cloned->reasonPhrase = $reasonPhrase === ''
-            ? Status::tryFrom($code)?->getReasonPhrase()
-            : $reasonPhrase;  
+            ? Status::tryFrom($code)?->getReasonPhrase() ?? ''
+            : $reasonPhrase;
+
         return $cloned;
     }
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Pac\LeanHttp;
 
-use Pac\LeanHttp\Message;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UriInterface;
@@ -18,19 +17,14 @@ use Psr\Http\Message\UriInterface;
 class Request extends Message implements RequestInterface
 {
     /**
-     * Constructor to initialize the request with method, URI, body, headers, request target, and protocol version.
-     * @param string $method
-     * The HTTP method (e.g., 'GET', 'POST').
-     * @param UriInterface $uri
-     * The URI of the request.
-     * @param StreamInterface $body
-     * The body of the request.
-     * @param array $headers
-     * The headers of the request.
-     * @param string $requestTarget
-     * The request target (default is '/').
-     * @param ?string $protocolVersion
-     * The HTTP protocol version (default is null).
+     * Constructor to initialize the request.
+     *
+     * @param string $method The HTTP method (e.g., 'GET', 'POST')
+     * @param UriInterface $uri The URI of the request
+     * @param StreamInterface $body The body of the request
+     * @param array<string, string[]> $headers Request headers
+     * @param string $requestTarget The request target (default: '/')
+     * @param ?string $protocolVersion The HTTP protocol version or null for default
      */
     public function __construct(
         private string $method,
@@ -44,12 +38,15 @@ class Request extends Message implements RequestInterface
     }
 
     /**
-     * Summary of getRequestTarget
-     * @return string
+     * Get the request target.
+     *
+     * Returns the request target if explicitly set, otherwise constructs it from the URI path and query.
+     *
+     * @return string The request target (e.g., '/path?query=value' or '*')
      */
-	public function getRequestTarget(): string 
+    public function getRequestTarget(): string
     {
-        if ($this->requestTarget !== null && $this->requestTarget !== '') {
+        if ($this->requestTarget !== '') {
             return $this->requestTarget;
         }
         $target = $this->uri->getPath();
@@ -60,6 +57,7 @@ class Request extends Message implements RequestInterface
         if ($query !== '') {
             $target .= '?' . $query;
         }
+
         return $target;
     }
 
@@ -74,10 +72,11 @@ class Request extends Message implements RequestInterface
      * @return self
      * Returns a new instance of the Request with the updated request target.
      */
-	public function withRequestTarget(string $requestTarget): self 
+    public function withRequestTarget(string $requestTarget): self
     {
         $new = clone $this;
         $new->requestTarget = $requestTarget;
+
         return $new;
     }
 
@@ -89,7 +88,7 @@ class Request extends Message implements RequestInterface
      * Returns the HTTP method as a string.
      * The method is typically in uppercase, but it can be in any case as long as it is a valid HTTP method.
      */
-	public function getMethod(): string 
+    public function getMethod(): string
     {
         return $this->method;
     }
@@ -112,13 +111,14 @@ class Request extends Message implements RequestInterface
      * Valid HTTP methods consist of alphanumeric characters and some special characters.
      * Examples of valid methods include 'GET', 'POST', 'PUT', 'DELETE', 'PATCH', etc.
      */
-	public function withMethod(string $method): self 
+    public function withMethod(string $method): self
     {
-        if (!preg_match('/^[!#$%&\'*+\-.^_`|~0-9a-zA-Z]+$/', $method)) {
+        if (! preg_match('/^[!#$%&\'*+\-.^_`|~0-9a-zA-Z]+$/', $method)) {
             throw new \InvalidArgumentException("Invalid HTTP method: $method");
         }
         $new = clone $this;
         $new->method = $method;
+
         return $new;
     }
 
@@ -130,7 +130,7 @@ class Request extends Message implements RequestInterface
      * Returns the URI as an instance of UriInterface.
      * The URI can be used to access various components like scheme, host, path, query, etc.
      */
-	public function getUri(): UriInterface 
+    public function getUri(): UriInterface
     {
         return $this->uri;
     }
@@ -149,14 +149,15 @@ class Request extends Message implements RequestInterface
      * @return self
      * Returns a new instance of the Request with the updated URI and headers.
      */
-	public function withUri(UriInterface $uri, bool $preserveHost=true): self 
+    public function withUri(UriInterface $uri, bool $preserveHost = true): self
     {
         $new = clone $this;
         $new->uri = $uri;
         $host = $uri->getHost();
-        if (!$preserveHost || (!$new->hasHeader('host') && $host !== '')) {
+        if (! $preserveHost || (! $new->hasHeader('host') && $host !== '')) {
             $new = $new->withHeader('host', $host);
         }
+
         return $new;
     }
 }

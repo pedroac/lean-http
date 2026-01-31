@@ -9,7 +9,8 @@ namespace Pac\LeanHttp;
  * This enum defines all standard HTTP status codes as per RFC 7231 and related RFCs.
  * Each case corresponds to a specific HTTP status code and provides a method to get the reason phrase.
  */
-enum Status: int {
+enum Status: int
+{
     case CONTINUE = 100;
     case SWITCHING_PROTOCOLS = 101;
     case PROCESSING = 102;
@@ -79,7 +80,8 @@ enum Status: int {
      * @return string
      * Returns the reason phrase for the HTTP status code.
      */
-    public function getReasonPhrase(): string {
+    public function getReasonPhrase(): string
+    {
         return match($this) {
             self::CONTINUE => "Continue",
             self::SWITCHING_PROTOCOLS => "Switching Protocols",

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pac\LeanHttp;
 
+use Pac\LeanHttp\Exception\StreamException;
 use Psr\Http\Message\StreamInterface;
 
 /**
@@ -18,65 +19,64 @@ class Stream implements StreamInterface
      * This is the underlying resource that represents the stream.
      * It is used to perform read and write operations on the stream.
      */
-    private $filePointer;
+    private mixed $filePointer;
 
     /**
      * Metadata for the stream.
      * This is an associative array that contains metadata about the stream, such as its mode, size, and other properties.
      * It is lazily loaded when requested.
+     * @var array<string, mixed>|null
      */
-    private $metaData;
+    private ?array $metaData = null;
 
     /**
      * Constructor to initialize the stream with a file path and mode.
-     * 
-     * @param string $path
-     * The path to the file or stream resource.
-     * @param string $mode
-     * The mode in which the file should be opened (default is an empty string).
-     * @throws \RuntimeException
-     * If the file cannot be opened.
+     *
+     * @param string $path The path to the file or stream resource (e.g., 'php://memory', '/path/to/file')
+     * @param string $mode The file open mode (default: empty string, uses default mode)
      */
-    function __construct(
+    public function __construct(
         string $path,
         string $mode = ''
     ) {
-        $this->filePointer = @fopen($path, $mode);
-        if (!$this->filePointer) {
-            throw new \RuntimeException("Couldn't open the file `$path`.");
+        $error = null;
+        set_error_handler(function ($errno, $errstr) use (&$error) {
+            $error = $errstr;
+
+            return true;
+        });
+        $this->filePointer = fopen($path, $mode);
+        restore_error_handler();
+        if (! $this->filePointer) {
+            throw new \Pac\LeanHttp\Exception\StreamException(
+                $error ? "Couldn't open the file `$path`: $error" : "Couldn't open the file `$path`."
+            );
         }
     }
 
     /**
-     * Create a new Stream instance from a file path.
-     * 
-     * @param string $path
-     * The path to the file or stream resource.
-     * @param string $mode
-     * The mode in which the file should be opened (default is 'r').
-     * @return self
-     * Creates a new Stream instance that reads from the specified file path.
+     * Create a new Stream instance from memory.
+     *
+     * @param ?string $content Optional initial content to write to the stream
+     * @return self A new Stream instance using php://memory
      */
-    static function fromMemory(string $content = null): self
+    public static function fromMemory(?string $content = null): self
     {
         $newInstance = new self('php://memory', 'w+');
         if ($content !== null) {
             $newInstance->write($content);
         }
+
         return $newInstance;
     }
 
     /**
      * Create a new Stream instance from a temporary file.
-     * 
-     * @param int|null $bytes
-     * The size of the temporary memory stream in bytes. If null, it defaults to an unlimited size.
-     * @return self
-     * Creates a new Stream instance that uses a temporary memory stream.
-     * If $bytes is specified, it creates a memory stream with the specified size.
-     * If $bytes is null, it creates a memory stream with an unlimited size.
+     *
+     * @param ?int $bytes Optional maximum size in bytes for the temporary stream
+     * @return self A new Stream instance using a temporary file
      */
-    static function fromTemporary(?int $bytes = null): self
+    public static function fromTemporary(?int $bytes = null): self
     {
         return new self(
             'php://temp' . ($bytes === null ? '' : "/memory:$bytes"),
@@ -85,36 +85,33 @@ class Stream implements StreamInterface
     }
 
     /**
-     * Create a new Stream instance from a file path.
-     * 
-     * @param string $path
-     * The path to the file or stream resource.
-     * @param string $mode
-     * The mode in which the file should be opened (default is 'r').
+     * Create a Stream that reads from php://input.
+     *
+     * This is useful for reading data from HTTP POST requests.
+     *
      * @return self
-     * Creates a new Stream instance that reads from the specified file path.
-     * If the file does not exist, it throws a RuntimeException.
+     * Creates a new Stream instance that reads from php://input.
      */
-    static function fromInput(): self
+    public static function fromInput(): self
     {
         return new self('php://input', 'r');
     }
 
     /**
      * Create a new Stream instance that writes to the output stream.
-     * 
+     *
      * @return self
      * Creates a new Stream instance that writes to the output stream (php://output).
      * This stream is typically used for sending output to the browser or console.
      * It opens the stream in write mode ('w'), allowing data to be written to it.
      * If the stream cannot be opened, it throws a RuntimeException.
      */
-    static function fromOutput(): self
+    public static function fromOutput(): self
     {
         return new self('php://output', 'w');
     }
 
-    function __destruct()
+    public function __destruct()
     {
         if ($this->filePointer) {
             fclose($this->filePointer);
@@ -123,17 +120,18 @@ class Stream implements StreamInterface
 
     /**
      * Convert the stream to a string representation.
-     * 
+     *
      * This method rewinds the stream to the beginning and reads its contents,
      * returning them as a string. It is useful for getting the entire content of the stream.
      *
      * @return string
      * Returns the contents of the stream as a string.
      */
-    function __toString(): string
+    public function __toString(): string
     {
         try {
             $this->rewind();
+
             return stream_get_contents($this->filePointer) ?: '';
         } catch (\Throwable $e) {
             return '';
@@ -142,12 +140,12 @@ class Stream implements StreamInterface
 
     /**
      * Close the stream.
-     * 
+     *
      * This method closes the file pointer associated with the stream.
      * After calling this method, the stream cannot be used for reading or writing.
      * It sets the file pointer to null to indicate that the stream is closed.
      */
-    function close(): void
+    public function close(): void
     {
         fclose($this->filePointer);
         $this->filePointer = null;
@@ -155,7 +153,7 @@ class Stream implements StreamInterface
 
     /**
      * Detach the stream from its underlying resource.
-     * 
+     *
      * This method returns the file pointer resource and sets the file pointer to null.
      * After calling this method, the stream is in an unusable state.
      * It is useful when you want to take ownership of the file pointer resource.
@@ -163,16 +161,17 @@ class Stream implements StreamInterface
      * @return mixed
      * Returns the file pointer resource, which can be used for further operations.
      */
-    function detach(): mixed
+    public function detach(): mixed
     {
         $filePointer = $this->filePointer;
         $this->filePointer = null;
+
         return $filePointer;
     }
 
     /**
      * Check if the end of the stream has been reached.
-     * 
+     *
      * This method checks if the file pointer has reached the end of the stream.
      * It returns true if the end of the stream has been reached, otherwise false.
      * If the stream is not open, it returns true.
@@ -180,28 +179,33 @@ class Stream implements StreamInterface
      * @return bool
      * Returns true if the end of the stream has been reached, false otherwise.
      */
-    function eof(): bool
+    public function eof(): bool
     {
         return $this->filePointer ? feof($this->filePointer) : true;
     }
 
     /**
      * Get the contents of the stream.
-     * 
+     *
      * This method reads the entire contents of the stream and returns it as a string.
      * It is useful for getting all data from the stream without needing to read it in chunks.
      *
      * @return string
      * Returns the contents of the stream as a string.
      */
-    function getContents(): string
+    public function getContents(): string
     {
-        return stream_get_contents($this->getHandlerOrThrow());
+        $contents = stream_get_contents($this->getHandlerOrThrow());
+        if ($contents === false) {
+            throw new StreamException('Failed to read from stream');
+        }
+
+        return $contents;
     }
 
     /**
      * Get metadata for the stream.
-     * 
+     *
      * This method retrieves metadata for the stream, such as its mode, size, and other properties.
      * If a specific key is provided, it returns the value for that key; otherwise, it returns null.
      *
@@ -210,81 +214,85 @@ class Stream implements StreamInterface
      * @return mixed
      * Returns the metadata value for the specified key or null if the key does not exist.
      */
-    function getMetadata(string|null $key = null): mixed
+    public function getMetadata(string|null $key = null): mixed
     {
-        if (!$this->metaData) {
+        if (! $this->metaData) {
             $this->metaData = stream_get_meta_data($this->filePointer);
         }
         if ($key === null) {
             return $this->metaData;
         }
+
         return $this->metaData[$key] ?? null;
     }
 
     /**
      * Get the size of the stream.
-     * 
+     *
      * This method returns the size of the stream in bytes.
      * If the stream is not open or the size cannot be determined, it returns null.
      *
      * @return int|null
      * Returns the size of the stream in bytes or null if the size cannot be determined.
      */
-    function getSize(): int|null
+    public function getSize(): int|null
     {
-        if (!$this->filePointer) {
+        if (! $this->filePointer) {
             return null;
         }
+
         return fstat($this->filePointer)['size'] ?? null;
     }
 
     /**
      * Check if the stream is readable.
-     * 
+     *
      * This method checks if the stream can be read from.
      * It returns true if the stream is open in a readable mode, otherwise false.
      *
      * @return bool
      * Returns true if the stream is readable, false otherwise.
      */
-    function isReadable(): bool
+    public function isReadable(): bool
     {
         $mode = $this->getMetadata('mode');
+
         return strpbrk($mode, 'r+') !== false;
     }
 
     /**
      * Check if the stream is seekable.
-     * 
+     *
      * This method checks if the stream supports seeking operations.
      * It returns true if the stream can be seeked, otherwise false.
      *
      * @return bool
      * Returns true if the stream is seekable, false otherwise.
      */
-    function isSeekable(): bool
+    public function isSeekable(): bool
     {
         return $this->getMetadata('seekable') ?? false;
     }
 
     /**
      * Check if the stream is writable.
-     * 
+     *
      * This method checks if the stream can be written to.
      * It returns true if the stream is open in a writable mode, otherwise false.
      *
      * @return bool
      * Returns true if the stream is writable, false otherwise.
      */
-    function isWritable(): bool
+    public function isWritable(): bool
     {
         $mode = $this->getMetadata('mode');
+
         return strpbrk($mode, 'waxc+') !== false;
     }
 
     /**
      * Read a specified number of bytes from the stream.
-     * 
+     *
      * This method reads a specified number of bytes from the stream and returns them as a string.
      * If the end of the stream is reached before reading the specified number of bytes, it returns whatever is available.
      *
@@ -293,27 +301,35 @@ class Stream implements StreamInterface
      * @return string
      * Returns the read bytes as a string.
      */
-    function read(int $length): string
+    public function read(int $length): string
     {
-        return fread($this->getHandlerOrThrow(), $length);
+        if ($length < 1) {
+            throw new StreamException('Length must be greater than 0');
+        }
+        $data = fread($this->getHandlerOrThrow(), $length);
+        if ($data === false) {
+            throw new StreamException('Failed to read from stream');
+        }
+
+        return $data;
     }
 
     /**
      * Rewind the stream to the beginning.
-     * 
+     *
      * This method sets the file pointer back to the start of the stream.
      * It is useful when you want to read or write from the beginning of the stream again.
      *
      * @return void
      */
-    function rewind(): void
+    public function rewind(): void
     {
         rewind($this->getHandlerOrThrow());
     }
 
     /**
      * Seek to a specific position in the stream.
-     * 
+     *
      * This method moves the file pointer to a specified offset within the stream.
      * The offset can be relative to the beginning, current position, or end of the stream.
      *
@@ -324,28 +340,33 @@ class Stream implements StreamInterface
      * It can be SEEK_SET (beginning), SEEK_CUR (current position), or SEEK_END (end).
      * @return void
      */
-    function seek(int $offset, int $whence = SEEK_SET): void
+    public function seek(int $offset, int $whence = SEEK_SET): void
     {
         fseek($this->getHandlerOrThrow(), $offset, $whence);
     }
 
     /**
      * Get the current position of the file pointer in the stream.
-     * 
+     *
      * This method returns the current position of the file pointer within the stream.
      * It is useful for determining where you are in the stream.
      *
      * @return int
      * Returns the current position of the file pointer in bytes.
      */
-    function tell(): int
+    public function tell(): int
     {
-        return ftell($this->getHandlerOrThrow());
+        $position = ftell($this->getHandlerOrThrow());
+        if ($position === false) {
+            throw new StreamException('Failed to get stream position');
+        }
+
+        return $position;
     }
 
     /**
      * Write a string to the stream.
-     * 
+     *
      * This method writes a string to the stream and returns the number of bytes written.
      * If the stream is not writable, it throws an exception.
      *
@@ -354,14 +375,19 @@ class Stream implements StreamInterface
      * @return int
      * Returns the number of bytes written to the stream.
      */
-    function write(string $string): int
+    public function write(string $string): int
     {
-        return fwrite($this->getHandlerOrThrow(), $string);
+        $bytes = fwrite($this->getHandlerOrThrow(), $string);
+        if ($bytes === false) {
+            throw new StreamException('Failed to write to stream');
+        }
+
+        return $bytes;
     }
 
     /**
      * Check if the stream is null (i.e., not initialized).
-     * 
+     *
      * This method checks if the file pointer is null, indicating that the stream has not been initialized or has been closed.
      * It returns true if the stream is null, otherwise false.
      *
@@ -375,7 +401,7 @@ class Stream implements StreamInterface
 
     /**
      * Apply a callable function to the stream.
-     * 
+     *
      * This method allows you to apply a callable function to the file pointer of the stream.
      * It is useful for performing custom operations on the stream without exposing the file pointer directly.
      *
@@ -391,7 +417,7 @@ class Stream implements StreamInterface
 
     /**
      * Write data to the stream based on the specified Content-Type.
-     * 
+     *
      * This method writes data to the stream according to the specified Content-Type.
      * It supports various content types such as JSON, CSV, XML, HTML, and plain text.
      *
@@ -405,45 +431,54 @@ class Stream implements StreamInterface
     public function writeByContentType(
         mixed $data,
         string $mainType
-    ) {
+    ): void {
         switch ($mainType) {
             case 'application/json':
                 $this->write(json_encode($data, \JSON_THROW_ON_ERROR));
+
                 break;
             case 'text/csv':
-                if (!is_array($data)) {
+                if (! is_array($data)) {
                     throw new \InvalidArgumentException("Invalid data type for Content-Type `$mainType`. Expected array.");
                 }
                 foreach ($data as $row) {
                     $this->apply(fn ($filePointer) => fputcsv($filePointer, $row));
                 }
+
                 break;
             case 'text/xml':
             case 'application/xml':
             case 'text/html':
                 if ($data instanceof \SimpleXMLElement) {
-                    $this->write($data->asXML());
-                } else if ($data instanceof \DOMDocument) {
-                    $this->write(
-                        $mainType === 'text/html'
-                            ? $data->saveHTML()
-                            : $data->saveXML()
-                    );
+                    $xml = $data->asXML();
+                    if ($xml === false) {
+                        throw new \InvalidArgumentException("Failed to convert SimpleXMLElement to XML string");
+                    }
+                    $this->write($xml);
+                } elseif ($data instanceof \DOMDocument) {
+                    $output = $mainType === 'text/html'
+                        ? $data->saveHTML()
+                        : $data->saveXML();
+                    if ($output === false) {
+                        throw new \InvalidArgumentException("Failed to convert DOMDocument to string");
+                    }
+                    $this->write($output);
                 } else {
                     throw new \InvalidArgumentException("Invalid data type for Content-Type `$mainType`. Expected \\SimpleXMLElement, \\DOMDocument or string.");
                 }
+
                 break;
             default:
-                if (!is_string($data) && !$data instanceof \Stringable) {
+                if (! is_string($data) && ! $data instanceof \Stringable) {
                     throw new \InvalidArgumentException("Invalid data type for Content-Type `$mainType`. Expected a string.");
                 }
-                $this->write($data);
+                $this->write((string)$data);
         }
     }
 
     /**
      * Get the file pointer resource or throw an exception if the stream is detached or closed.
-     * 
+     *
      * This method checks if the file pointer is valid and returns it.
      * If the file pointer is null, it throws a RuntimeException indicating that the stream is detached or closed.
      *
@@ -454,9 +489,10 @@ class Stream implements StreamInterface
      */
     private function getHandlerOrThrow(): mixed
     {
-        if (!$this->filePointer) {
-            throw new \RuntimeException('Stream is detached or closed.');
+        if (! $this->filePointer) {
+            throw new \Pac\LeanHttp\Exception\StreamException('Stream is detached or closed.');
         }
+
         return $this->filePointer;
     }
 }

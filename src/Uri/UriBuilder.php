@@ -20,7 +20,7 @@ class UriBuilder
      * The URI host (e.g., 'example.com').
      * @param string $path
      * The URI path (e.g., '/path/to/resource').
-     * @param string|array|null $query
+     * @param string|array<int|string, mixed>|null $query
      * The URI query string or an associative array of query parameters.
      * @param ?string $fragment
      * The URI fragment (e.g., 'section1').
@@ -47,7 +47,7 @@ class UriBuilder
      * Create a new UriBuilder instance from an associative array of URI parts.
      * The array should contain keys for 'scheme', 'host', 'path', 'query', 'fragment', 'port', 'user', and 'pass'.
      * If a key is not present, a default value will be used (e.g., empty string for 'scheme', 'host', 'path', and 'user').
-     * @param array $parts
+     * @param array<string, mixed> $parts
      * The array should contain the following keys:
      * - 'scheme': The URI scheme (e.g., 'http', 'https').
      * - 'host': The URI host (e.g., 'example.com').
@@ -57,12 +57,12 @@ class UriBuilder
      * - 'port': The URI port number (e.g., 80, 443). If null, the default port for the scheme is used.
      * - 'user': The URI user info (e.g., 'username').
      * - 'pass': The URI password (e.g., 'password'). If null, no password is included.
-     * @return UriBuilder
+     * @return self
      * Returns a new instance of UriBuilder initialized with the provided parts.
      */
-    public static function fromArray(array $parts): static
+    public static function fromArray(array $parts): self
     {
-        return new static(
+        return new self(
             $parts['scheme'] ?? '',
             $parts['host'] ?? '',
             $parts['path'] ?? '',
@@ -84,12 +84,13 @@ class UriBuilder
     public function isValid(): bool
     {
         $validator = UriValidator::getDefault();
+
         return $validator->validateScheme($this->scheme)
             && $validator->validateHost($this->host)
-            && $validator->validatePort($this->port)
+            && ($this->port === null || $validator->validatePort($this->port))
             && $validator->validatePath($this->path)
-            && $validator->validateQuery($this->query)
-            && $validator->validateFragment($this->fragment);
+            && (is_string($this->query) && $validator->validateQuery($this->query))
+            && ($this->fragment === null || $validator->validateFragment($this->fragment));
     }
 
     /**
@@ -116,7 +117,7 @@ class UriBuilder
      */
     public function buildAuthority(): string
     {
-        if (!$this->host) {
+        if (! $this->host) {
             return '';
         }
         $authority = '';
@@ -127,12 +128,13 @@ class UriBuilder
         if ($this->port !== null) {
             $authority .= ":$this->port";
         }
+
         return $authority;
     }
 
     /**
      * Build a string that should represent a URL without validating or sanitation the components.
-     * It's useful to avoid repeated validations or sanitations. 
+     * It's useful to avoid repeated validations or sanitations.
      * @return string
      * Returns a raw URL string built from the URI components.
      */
@@ -160,6 +162,7 @@ class UriBuilder
         if ($this->fragment !== null) {
             $string .= "#{$this->fragment}";
         }
+
         return $string;
     }
 
@@ -175,18 +178,19 @@ class UriBuilder
     {
         $validator = UriValidator::getDefault();
         if (
-            !$validator->validateScheme($this->scheme)
-            || !$validator->validateHost($this->host)
+            ! $validator->validateScheme($this->scheme)
+            || ! $validator->validateHost($this->host)
         ) {
-            throw new RuntimeException("Can't build a safe URL from an invalid scheme or host.");
+            throw new \Pac\LeanHttp\Exception\UriException("Can't build a safe URL from an invalid scheme or host.");
         }
         $normalizer = UriNormalizer::getDefault();
+
         return (new self(
             $this->scheme,
             $this->host,
             $normalizer->normalizePath($this->path),
-            $normalizer->normalizeQuery($this->query),
-            $normalizer->normalizeEncode($this->fragment),
+            is_string($this->query) ? $normalizer->normalizeQuery($this->query) : $this->query,
+            $this->fragment !== null ? $normalizer->normalizeEncode($this->fragment) : null,
             $this->port,
             $this->user,
             password: $this->password

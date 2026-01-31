@@ -7,6 +7,7 @@ namespace Pac\LeanHttp\Tests\Uri;
 use Pac\LeanHttp\Uri\UriNormalizer;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
+
 class UriNormalizerTest extends TestCase
 {
     #[TestWith(['special&chars', 'special%26chars'])]
@@ -121,7 +122,7 @@ class UriNormalizerTest extends TestCase
         );
     }
 
-    
+
     #[TestWith(['b=2&a=1', 'b=2&a=1', false])]
     #[TestWith(['b=2&a=1', 'a=1&b=2', true])]
     /**

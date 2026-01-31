@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Pac\LeanHttp;
 
+use Pac\LeanHttp\Exception\HeaderException;
+use Pac\LeanHttp\Exception\ParseException;
 use Psr\Http\Message\MessageInterface;
 use Psr\Http\Message\StreamInterface;
-use RuntimeException;
 
 /**
  * Represents an HTTP message, which can be a request or a response.
@@ -19,7 +20,7 @@ class Message implements MessageInterface
      * Protocol version used in case it's not defined in the constructor or $_SERVER.
      */
     public const DEFAULT_PROTOCOL_VERSION = '1.0';
-    
+
     /**
      * Valid HTTP protocol versions.
      * This array contains the valid protocol versions that can be used in the message.
@@ -31,13 +32,14 @@ class Message implements MessageInterface
         '1.1',
         '2',
         '2.0',
-        '3'
+        '3',
     ];
 
     /**
      * Header names (values) associated to their lower cased versions (keys).
      * It's used to access header values by case insensitive header names.
      * And preserve the header names passed from method arguments.
+     * @var array<string, string>
      */
     private array $headerNames = [];
 
@@ -47,23 +49,21 @@ class Message implements MessageInterface
     private string $protocolVersion = self::DEFAULT_PROTOCOL_VERSION;
 
     /**
+     * Headers stored as associative array with header names as keys and arrays of string values.
+     * @var array<string, string[]>
+     */
+    private array $headers = [];
+
+    /**
      * Constructor to initialize the message with a body, headers, and protocol version.
-     * This constructor allows you to create a message with a specific body, headers, and protocol version.
-     * @param \Psr\Http\Message\StreamInterface $body
-     * The body of the message as a stream. This can be any stream that implements the StreamInterface.
-     * @param array $headers
-     * An associative array of headers where the keys are header names and the values are arrays of strings.
-     * Each header name is case-insensitive, and the values can be single strings or arrays of strings.
-     * @param ?string $protocolVersion
-     * The HTTP protocol version as a string (e.g., '1.0', '1.1').
-     * If not provided, it defaults to '1.0' or the value from the $_SERVER['SERVER_PROTOCOL'] if available.
-     * If the provided value is an empty string, it will also default to '1.0'.
-     * If the protocol version is not provided, it will be determined from the server environment.
-     * If the server protocol is not available, it will default to '1.0'.
+     *
+     * @param StreamInterface $body The message body as a stream
+     * @param array<string, string|string[]> $headers Associative array of headers (values can be strings or arrays of strings)
+     * @param ?string $protocolVersion HTTP protocol version (e.g., '1.1') or null to auto-detect from $_SERVER
      */
     public function __construct(
         private StreamInterface $body,
-        private array $headers = [],
+        array $headers = [],
         ?string $protocolVersion = null
     ) {
         foreach ($headers as $name => $value) {
@@ -72,154 +72,129 @@ class Message implements MessageInterface
         }
         if ($protocolVersion === null || $protocolVersion === '') {
             $serverProtocol = filter_input(\INPUT_SERVER, 'SERVER_PROTOCOL');
-            $protocolVersion = $serverProtocol
-                ? substr(
-                    $serverProtocol,
-                    strpos($serverProtocol, '/') + 1
-                ) : self::DEFAULT_PROTOCOL_VERSION;
+            if ($serverProtocol && ($pos = strpos($serverProtocol, '/')) !== false) {
+                $protocolVersion = substr($serverProtocol, $pos + 1);
+            } else {
+                $protocolVersion = self::DEFAULT_PROTOCOL_VERSION;
+            }
         }
         $this->protocolVersion = $protocolVersion;
     }
 
     /**
-     * This method returns the HTTP protocol version used in the message.
-     * The version string MUST contain only the HTTP version number, without any additional text.
-     * For example, it should return '1.0' or '1.1'.
-     * @return string
-     * Returns the HTTP protocol version as a string.
-     * The version string will be in the format '1.0', '1.1', etc.
-     * It does not include any additional text or protocol information.
+     * Returns the HTTP protocol version used in the message.
+     *
+     * @return string The HTTP protocol version (e.g., '1.0', '1.1')
      */
-    function getProtocolVersion(): string
+    public function getProtocolVersion(): string
     {
         return $this->protocolVersion;
     }
 
     /**
      * Return an instance with the specified HTTP protocol version.
-     * 
-     * @param string $version
-     * The HTTP protocol version to set (e.g., '1.0', '1.1').
-     * @return static
-     * Returns a new instance of the message with the specified protocol version.
-     * The returned instance will have the same body and headers as the original message, but with the protocol version set to the provided value.
+     *
+     * @param string $version The HTTP protocol version to set (e.g., '1.0', '1.1')
+     * @return static A new instance with the specified protocol version
+     * @throws \InvalidArgumentException If the protocol version is invalid
      */
-    function withProtocolVersion(string $version): MessageInterface
+    public function withProtocolVersion(string $version): MessageInterface
     {
-        if (!in_array($version, self::VALID_PROTOCOL_VERSIONS, true)) {
+        if (! in_array($version, self::VALID_PROTOCOL_VERSIONS, true)) {
             throw new \InvalidArgumentException("Invalid HTTP protocol version: $version");
         }
         $cloned = clone $this;
         $cloned->protocolVersion = $version;
+
         return $cloned;
     }
 
     /**
      * Get all headers as an associative array.
-     * @return array
-     * Returns an associative array of headers where the keys are header names and the values are arrays of strings representing the header values.
-     * The header names are case-insensitive, and the values can be single strings or arrays of strings.
+     *
+     * @return array<string, string[]> Associative array of headers where keys are header names and values are arrays of strings
      */
-    function getHeaders(): array
+    public function getHeaders(): array
     {
         return $this->headers;
     }
 
     /**
      * Check if a header exists by the given case-insensitive name.
-     * 
-     * @param string $name
-     * Case-insensitive header field name.
-     * @return bool
-     * Returns true if the header exists, false otherwise.
+     *
+     * @param string $name Case-insensitive header field name
+     * @return bool True if the header exists, false otherwise
      */
-    function hasHeader(string $name): bool
+    public function hasHeader(string $name): bool
     {
         return isset($this->headerNames[strtolower($name)]);
     }
 
     /**
      * Retrieve a message header value by the given case-insensitive name.
-     * 
-     * If the header does not appear in the message, this method returns an empty array.
-     * 
-     * @param string $name
-     * Case-insensitive header field name.
-     * @return string[]
-     * An array of string values as provided for the given header.
+     *
+     * @param string $name Case-insensitive header field name
+     * @return string[] Array of string values for the given header, or empty array if header doesn't exist
      */
-    function getHeader(string $name): array
+    public function getHeader(string $name): array
     {
         $originalName = $this->headerNames[strtolower($name)] ?? null;
+
         return $originalName !== null ? $this->headers[$originalName] : [];
     }
 
     /**
      * Retrieve a message header value as a single string, concatenated by commas.
-     * 
-     * If the header does not appear in the message, this method returns an empty string.
-     * 
-     * @param string $name
-     * Case-insensitive header field name.
-     * @return string
-     * A single string containing all values for the given header, concatenated by commas.
+     *
+     * @param string $name Case-insensitive header field name
+     * @return string Single string containing all values for the given header, concatenated by commas, or empty string if header doesn't exist
      */
-    function getHeaderLine(string $name): string
+    public function getHeaderLine(string $name): string
     {
         return implode(', ', $this->getHeader($name));
     }
 
     /**
      * Return an instance with the specified header.
-     * 
-     * @param string $name
-     * Case-insensitive header field name to set.
-     * @param string|string[] $value
-     * Header value(s).
-     * @return static
-     * Returns a new instance of the message with the specified header set.
-     * The returned instance will have the same body and other headers as the original message, but with the specified header set to the provided value.
-     * @throws \InvalidArgumentException
-     * For invalid header names or values.
+     *
+     * @param string $name Case-insensitive header field name to set
+     * @param string|string[] $value Header value(s)
+     * @return static A new instance with the specified header set
+     * @throws \InvalidArgumentException For invalid header names or values
      */
-    function withHeader(string $name, $value): MessageInterface
+    public function withHeader(string $name, $value): MessageInterface
     {
         $this->assertHeaderName($name);
         $this->assertHeaderValue($value);
         $cloned = clone $this;
         $cloned->headers[$name] = is_array($value) ? $value : [$value];
         $cloned->headerNames[strtolower($name)] = $name;
+
         return $cloned;
     }
 
     /**
      * Return an instance with the specified header added.
-     * @param string $name
-     * Case-insensitive header field name to add.
-     * @param mixed $value
-     * Header value(s). It can be a string or an array of strings.
-     * If the header already exists, the value will be appended to the existing values.
-     * @throws \RuntimeException
-     * If the value is not a string or an array of strings.
-     * @return Message
-     * Returns a new instance of the message with the specified header added.
-     * The returned instance will have the same body and other headers as the original message, but with the specified header added.
-     * If the header already exists, the value will be appended to the existing values.
+     *
+     * @param string $name Case-insensitive header field name to add
+     * @param string|string[] $value Header value(s)
+     * @return static A new instance with the specified header added
+     * @throws \RuntimeException If the value is not a string or an array of strings
      */
-    function withAddedHeader(string $name, $value): MessageInterface
+    public function withAddedHeader(string $name, $value): MessageInterface
     {
         if (is_array($value)) {
             foreach ($value as $item) {
-                if (!is_string($item)) {
-                    throw new RuntimeException("Invalid header value. Array values must be strings.");
+                if (! is_string($item)) {
+                    throw new HeaderException("Invalid header value. Array values must be strings.");
                 }
             }
-        } elseif (!is_string($value)) {
-            throw new RuntimeException("Invalid header value. It must be a string or an array.");
+        } elseif (! is_string($value)) {
+            throw new HeaderException("Invalid header value. It must be a string or an array.");
         }
         $cloned = clone $this;
         $lowerCasedName = strtolower($name);
-        if (!isset($cloned->headerNames[$lowerCasedName])) {
+        if (! isset($cloned->headerNames[$lowerCasedName])) {
             $cloned->headers[$name] = [];
         }
         if (is_array($value)) {
@@ -228,54 +203,51 @@ class Message implements MessageInterface
             $cloned->headers[$name][] = $value;
         }
         $cloned->headerNames[$lowerCasedName] = $name;
+
         return $cloned;
     }
 
     /**
      * Return an instance without the specified header.
-     * @param string $name
-     * Case-insensitive header field name to remove.
-     * @return Message
-     * Returns a new instance of the message without the specified header.
-     * The returned instance will have the same body and other headers as the original message, but without the specified header.
-     * If the header does not exist, the original message is returned unchanged.
+     *
+     * @param string $name Case-insensitive header field name to remove
+     * @return static A new instance without the specified header
      */
-    function withoutHeader(string $name): MessageInterface
+    public function withoutHeader(string $name): MessageInterface
     {
         $cloned = clone $this;
         $lowerCased = strtolower($name);
-        if (!isset($cloned->headerNames[$lowerCased])) {
+        if (! isset($cloned->headerNames[$lowerCased])) {
             return $cloned;
         }
         $originalName = $this->headerNames[strtolower($name)];
         unset($cloned->headerNames[$lowerCased]);
         unset($cloned->headers[$originalName]);
+
         return $cloned;
     }
 
     /**
      * Get the message body as a stream.
-     * @return StreamInterface
-     * Returns the body of the message as a stream.
-     * The body can be read, written to, or closed as needed.
+     *
+     * @return StreamInterface The body of the message as a stream
      */
-    function getBody(): StreamInterface
+    public function getBody(): StreamInterface
     {
         return $this->body;
     }
 
     /**
      * Return an instance with the specified body.
-     * @param \Psr\Http\Message\StreamInterface $body
-     * The body of the message as a stream. This can be any stream that implements the StreamInterface.
-     * @return Message
-     * Returns a new instance of the message with the specified body.
-     * The returned instance will have the same headers and protocol version as the original message, but with the body set to the provided stream.
+     *
+     * @param StreamInterface $body The body of the message as a stream
+     * @return static A new instance with the specified body
      */
-    function withBody(StreamInterface $body): MessageInterface
+    public function withBody(StreamInterface $body): MessageInterface
     {
         $cloned = clone $this;
         $cloned->body = $body;
+
         return $cloned;
     }
 
@@ -288,7 +260,7 @@ class Message implements MessageInterface
      * - `application/json`, an array is returned;
      * - `application/csv`, an array of arrays is returned;
      * - `application/xml`, 'text/xml' or 'text/html', an instance of \DomDocument is returned;
-     * @return array|object|null
+     * @return array<string|int, mixed>|object|null
      * Returns the parsed body in a structured format:
      * - An associative array for `application/x-www-form-urlencoded` or `multipart/form-data`.
      * - An associative array for `application/json`.
@@ -302,43 +274,85 @@ class Message implements MessageInterface
      * @throws \InvalidArgumentException
      * If the Content-Type header is not recognized or if the body cannot be parsed, an InvalidArgumentException is thrown.
      */
-    function parseBody(): array|object|null
+    public function parseBody(): array|object|null
     {
         $body = (string) $this->body;
         if (strlen($body) === 0) {
             return null;
         }
-        [$mainType] = $this->parseContentType();
-        if (!empty($mainType)) {
+        $contentTypeParts = $this->parseContentType();
+        $mainType = $contentTypeParts[0] ?? '';
+        if (! empty($mainType)) {
             switch ($mainType) {
                 case 'application/x-www-form-urlencoded':
                     parse_str($body, $result);
+
                     return $result;
                 case 'multipart/form-data':
-                    return filter_input_array(INPUT_POST);
+                    return filter_input_array(INPUT_POST) ?: [];
                 case 'application/json':
                     return json_decode((string) $this->body, true, 512, JSON_THROW_ON_ERROR);
                 case 'text/csv':
                     $rows = [];
                     $lines = explode("\n", (string) $this->body);
-                    foreach ($lines as $line) {
+                    foreach ($lines as $lineNum => $line) {
                         if ($line === '' || $line === "\n") {
                             continue;
                         }
-                        $rows[] = str_getcsv($line);
+                        $csvRow = str_getcsv($line);
+                        if (! is_array($csvRow)) {
+                            throw new ParseException("Failed to parse CSV line {$lineNum}: invalid CSV format");
+                        }
+                        $rows[] = $csvRow;
                     }
+
                     return $rows;
                 case 'text/xml':
                 case 'application/xml':
                     $dom = new \DOMDocument();
-                    $dom->loadXML((string) $this->body);
-                    return $dom; 
+                    $previousUseInternalErrors = libxml_use_internal_errors(true);
+
+                    try {
+                        libxml_set_external_entity_loader(function () {
+                            return null;
+                        });
+                        if (! $dom->loadXML((string) $this->body, LIBXML_NONET)) {
+                            $errors = libxml_get_errors();
+                            libxml_clear_errors();
+                            $errorMsg = $errors ? $errors[0]->message : 'Unknown XML parsing error';
+
+                            throw new ParseException("Failed to parse XML body: $errorMsg");
+                        }
+                        libxml_set_external_entity_loader(null);
+
+                        return $dom;
+                    } finally {
+                        libxml_use_internal_errors($previousUseInternalErrors);
+                    }
                 case 'text/html':
                     $dom = new \DOMDocument();
-                    $dom->loadHTML((string) $this->body);
-                    return $dom; 
+                    $previousUseInternalErrors = libxml_use_internal_errors(true);
+
+                    try {
+                        libxml_set_external_entity_loader(function () {
+                            return null;
+                        });
+                        if (! $dom->loadHTML((string) $this->body, LIBXML_NONET)) {
+                            $errors = libxml_get_errors();
+                            libxml_clear_errors();
+                            $errorMsg = $errors ? $errors[0]->message : 'Unknown HTML parsing error';
+
+                            throw new ParseException("Failed to parse HTML body: $errorMsg");
+                        }
+                        libxml_set_external_entity_loader(null);
+
+                        return $dom;
+                    } finally {
+                        libxml_use_internal_errors($previousUseInternalErrors);
+                    }
             }
         }
+
         return [$body];
     }
 
@@ -371,25 +385,21 @@ class Message implements MessageInterface
             $value = isset($paramParts[1]) ? trim($paramParts[1]) : null;
             $parameters[$key] = $value;
         }
+
         return $parameters;
     }
 
     /**
-     * Validate and assert the header name and value.
-     * This method checks if the header name is valid according to RFC 7230.
-     * It also checks if the header value is a valid string or an array of strings.
-     * If the header name or value is invalid, it throws an InvalidArgumentException.
-     * 
+     * Validate a header name according to RFC 7230.
+     *
      * @param string $name
      * The header name to validate.
-     * @param mixed $value
-     * The header value to validate. It can be a string or an array of strings.
      * @throws \InvalidArgumentException
-     * If the header name or value is invalid.
+     * If the header name is invalid.
      */
     private function assertHeaderName(string $name): void
     {
-        if (!preg_match('/^[A-Za-z0-9\'\-!#$%&*+.^_`|~]+$/', $name)) {
+        if (! preg_match('/^[A-Za-z0-9\'\-!#$%&*+.^_`|~]+$/', $name)) {
             throw new \InvalidArgumentException("Invalid header name: $name");
         }
     }
@@ -399,7 +409,7 @@ class Message implements MessageInterface
      * This method checks if the header value is a valid string or an array of strings.
      * It also checks if the value does not contain any newline characters.
      * If the header value is invalid, it throws an InvalidArgumentException.
-     * 
+     *
      * @param mixed $value
      * The header value to validate. It can be a string or an array of strings.
      * @throws \InvalidArgumentException
@@ -409,12 +419,12 @@ class Message implements MessageInterface
     {
         if (is_array($value)) {
             foreach ($value as $item) {
-                if (!is_string($item) || preg_match('/[\r\n]/', $item)) {
-                    throw new RuntimeException("Invalid header value. Array values must be strings.");
+                if (! is_string($item) || preg_match('/[\r\n]/', $item)) {
+                    throw new HeaderException("Invalid header value. Array values must be strings.");
                 }
             }
-        } elseif (!is_string($value)) {
-            throw new RuntimeException("Invalid header value. It must be a string or an array.");
+        } elseif (! is_string($value)) {
+            throw new HeaderException("Invalid header value. It must be a string or an array.");
         }
     }
 }

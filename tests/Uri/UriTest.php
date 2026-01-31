@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Pac\LeanHttp\Tests\Uri;
 
 use Pac\LeanHttp\Uri;
-use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
 
 class RawUriTest extends TestCase
 {
@@ -14,7 +14,7 @@ class RawUriTest extends TestCase
     {
         yield [Uri::class];
     }
-    
+
     #[DataProvider('classProvider')]
     public function testUriToString(string $className): void
     {

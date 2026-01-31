@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Pac\LeanHttp;
 
+use Pac\LeanHttp\Exception\UploadedFileException;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UploadedFileInterface;
-use RuntimeException;
 
 class UploadedFile implements UploadedFileInterface
 {
     /**
-     * The path to the temporary file.
+     * The stream for the uploaded file.
      */
-    private $stream;
+    private StreamInterface $stream;
 
     /**
      * Indicates if the file has been moved.
@@ -22,59 +22,45 @@ class UploadedFile implements UploadedFileInterface
 
     /**
      * Constructor to initialize the UploadedFile instance.
-     * This constructor is used to create an instance of UploadedFile from a temporary file on the server.
-     * It checks if the file exists and is an uploaded file, and initializes the stream.
-     * @param string $filePath
-     * The path to the temporary file on the server.
-     * @param string $clientFilename
-     * The original name of the file as provided by the client.
-     * @param string $clientMediaType
-     * The media type of the file as provided by the client (e.g., 'image/png').
-     * @param int $size
-     * The size of the uploaded file in bytes. Defaults to 0.
-     * @param int $error
-     * The error code associated with the file upload. Defaults to UPLOAD_ERR_OK.
-     * @throws \InvalidArgumentException
-     * If the file does not exist or is not an uploaded file.
-     * @throws \RuntimeException
-     * If the file has already been moved or if there is an error with the upload.
+     *
+     * Validates that the file exists and is an uploaded file before initializing the stream.
+     *
+     * @param string $filePath The path to the temporary uploaded file
+     * @param string $clientFilename The original filename as provided by the client
+     * @param ?string $clientMediaType The MIME type as provided by the client (e.g., 'image/png')
+     * @param int $size The file size in bytes (default: 0)
+     * @param int $error The upload error code (default: UPLOAD_ERR_OK)
+     * @throws \InvalidArgumentException If the file doesn't exist or isn't an uploaded file
      */
     public function __construct(
         public readonly string $filePath,
         public readonly string $clientFilename,
-        public readonly ?string $clientMediaType=null,
+        public readonly ?string $clientMediaType = null,
         public readonly int $size = 0,
         public readonly int $error = UPLOAD_ERR_OK,
     ) {
         if ($this->error !== UPLOAD_ERR_OK) {
-            $this->stream = null;
+            // For error cases, create a dummy stream that will be rejected by getStream()
+            $this->stream = Stream::fromMemory('');
+
             return;
         }
 
-        if (!file_exists($this->filePath)) {
+        if (! file_exists($this->filePath)) {
             throw new \InvalidArgumentException("`$filePath` wasn't found.");
         }
-        if (!is_uploaded_file($this->filePath)) {
+        if (! is_uploaded_file($this->filePath)) {
             throw new \InvalidArgumentException("`$filePath` isn't an uploaded file.");
         }
         $this->stream = new Stream($this->filePath, 'r');
     }
 
     /**
-     * Create an UploadedFile instance from an associative array.
-     * This is useful for creating an instance from a $_FILES array.
-     * @param array $data
-     * The array should contain the keys 'tmp_name', 'name', 'type', 'size', and optionally 'error'.
-     * - 'tmp_name': The path to the temporary file on the server.
-     * - 'name': The original name of the file as provided by the client.
-     * - 'type': The media type of the file as provided by the client (e.g., 'image/png').
-     * - 'size': The size of the uploaded file in bytes.
-     * - 'error': The error code associated with the file upload (optional, defaults to UPLOAD_ERR_OK).
-     * @return UploadedFile
-     * Returns a new instance of UploadedFile.
-     * @throws \InvalidArgumentException
-     * If the required keys are not present in the array or if the file does not exist.
-     * @throws \RuntimeException
+     * Create an UploadedFile instance from a $_FILES array entry.
+     *
+     * @param array<string, mixed> $data Array with keys: 'tmp_name', 'name', 'type', 'size', 'error' (optional)
+     * @return self A new UploadedFile instance
+     * @throws \InvalidArgumentException If required keys are missing or file is invalid
      */
     public static function fromArray(
         array $data
@@ -89,14 +75,9 @@ class UploadedFile implements UploadedFileInterface
     }
 
     /**
-     * Return a $_FILE item.
-     * @return array
-     * This array will contain the keys 'name', 'type', 'tmp_name', 'size', and 'error'.
-     * - 'name': The original name of the file as provided by the client.
-     * - 'type': The media type of the file as provided by the client (e.g., 'image/png').
-     * - 'tmp_name': The path to the temporary file on the server.
-     * - 'size': The size of the uploaded file in bytes.
-     * - 'error': The error code associated with the file upload.
+     * Convert the UploadedFile to a $_FILES array format.
+     *
+     * @return array<string, mixed> Array with keys: 'name', 'type', 'tmp_name', 'size', 'error'
      */
     public function toArray(): array
     {
@@ -110,30 +91,35 @@ class UploadedFile implements UploadedFileInterface
     }
 
     /**
-     * Return, from $_FILES, a tree (as associative arrays) with instances UploadFile.
-     * This method will traverse the $_FILES array and create a tree structure of UploadedFile instances.
-     * It will handle both single files and multiple files (arrays of files).
-     * @return array
-     * The returned array will have the same structure as $_FILES, but each file will be an instance of UploadedFile.
-     * - The keys will be the names of the files as they appear in $_FILES.
-     * - The values will be arrays or instances of UploadedFile, depending on whether the file is a single file or an array of files.
-     * @throws \InvalidArgumentException
-     * If the required keys are not present in the array or if the file does not exist.
-     * @throws \RuntimeException
+     * Create a tree of UploadedFile instances from $_FILES array.
+     *
+     * Handles both single files and nested file arrays, preserving the structure of $_FILES.
+     *
+     * @param array<string|int, mixed>|null $files The $_FILES array or null to use global $_FILES
+     * @return array<string|int, mixed> Tree structure matching $_FILES with UploadedFile instances
+     * @throws \InvalidArgumentException If file data is invalid or missing required keys
      */
-    public static function fromGlobal(?array $files=null): array
+    public static function fromGlobal(?array $files = null): array
     {
         $uploadedFiles = [];
         $validKeys = ['name', 'type', 'tmp_name', 'size', 'error'];
         foreach ($files ?? $_FILES as $name => $data) {
-            assert(isset($data['name'], $data['type'], $data['tmp_name'], $data['size'], $data['error']));
-            if (!is_array($data['name'])) {
+            if (! is_array($data)) {
+                throw new \InvalidArgumentException("Invalid file data for key '$name': expected array, got " . gettype($data));
+            }
+            if (! isset($data['name'], $data['type'], $data['tmp_name'], $data['size'], $data['error'])) {
+                throw new \InvalidArgumentException("Invalid file data for key '$name': missing required keys (name, type, tmp_name, size, error)");
+            }
+            if (! is_array($data['name'])) {
                 $uploadedFiles[$name] = self::fromArray($data);
+
                 continue;
             }
             $iterator = new \RecursiveIteratorIterator(new \RecursiveArrayIterator($data['name']));
             foreach ($iterator as $fileName) {
-                assert($fileName);
+                if (! is_string($fileName) || $fileName === '') {
+                    throw new \InvalidArgumentException("Invalid file name for key '$name': expected non-empty string, got " . gettype($fileName));
+                }
                 // build the path of keys to reach the value
                 $path = [];
                 for ($depth = 0; $depth <= $iterator->getDepth(); $depth++) {
@@ -142,107 +128,124 @@ class UploadedFile implements UploadedFileInterface
                 // add missing keys to $uploadedFiles[$name]
                 $current = &$uploadedFiles[$name];
                 foreach ($path as $step) {
-                    if (!isset($current[$step])) {
+                    if (! isset($current[$step])) {
                         $current[$step] = [];
                     }
                     $current = &$current[$step];
                 }
                 // create uploaded file data as an array before instantiating UploadedFile
                 $uploadedFileArray = ['name' => $fileName];
+                $valid = true;
                 foreach ($validKeys as $propertyName) {
+                    if (! isset($data[$propertyName])) {
+                        $valid = false;
+
+                        break;
+                    }
                     $crumb = $data[$propertyName];
                     foreach ($path as $key) {
-                        assert(isset($crumb[$key]));
+                        if (! is_array($crumb) || ! isset($crumb[$key])) {
+                            $valid = false;
+
+                            break 2;
+                        }
                         $crumb = $crumb[$key];
                     }
-                    assert(is_string($crumb));
-                    $uploadedFileArray[$propertyName] = $crumb;
+                    if ($propertyName === 'error') {
+                        $uploadedFileArray[$propertyName] = is_numeric($crumb) ? (int)$crumb : UPLOAD_ERR_OK;
+                    } elseif ($propertyName === 'size') {
+                        $uploadedFileArray[$propertyName] = is_numeric($crumb) ? (int)$crumb : 0;
+                    } elseif (! is_string($crumb)) {
+                        $valid = false;
+
+                        break;
+                    } else {
+                        $uploadedFileArray[$propertyName] = $crumb;
+                    }
                 }
-                $current = self::fromArray($uploadedFileArray);
+                if ($valid && isset($uploadedFileArray['name'], $uploadedFileArray['type'], $uploadedFileArray['tmp_name'], $uploadedFileArray['size'], $uploadedFileArray['error'])) {
+                    $current = self::fromArray($uploadedFileArray);
+                }
             }
         }
+
         return $uploadedFiles;
     }
 
     /**
      * Validate a tree of uploaded files.
-     * @param array $tree
-     * This method will traverse the provided tree structure and check if all values are instances of UploadedFileInterface.
-     * The tree can be a nested associative array where each value is an instance of UploadedFileInterface.
-     * - The keys can be any string, and the values can be either instances of UploadedFileInterface or nested arrays.
-     * - If any value in the tree is not an instance of UploadedFileInterface, the method will return false.
-     * - If all values are instances of UploadedFileInterface, the method will return true.
-     * @return bool
-     * Returns true if all values in the tree are instances of UploadedFileInterface, false otherwise.
-     * @throws \InvalidArgumentException
-     * If the provided tree is not a valid structure or if it contains invalid values.
-     * @throws \RuntimeException
-     * If the tree structure is not valid or if it contains unexpected values.
+     *
+     * Recursively checks that all values in the tree are UploadedFileInterface instances.
+     *
+     * @param array<string|int, mixed> $tree Nested array structure with UploadedFileInterface instances
+     * @return bool True if all values are UploadedFileInterface instances
      */
-    public static function validateTree(array $tree): bool {
+    public static function validateTree(array $tree): bool
+    {
         $iterator = new \RecursiveIteratorIterator(new \RecursiveArrayIterator($tree));
         foreach ($iterator as $value) {
-            if (!($value instanceof UploadedFileInterface)) {
+            if (! ($value instanceof UploadedFileInterface)) {
                 return false;
             }
         }
+
         return true;
     }
 
     /**
      * Get the stream associated with the uploaded file.
-     * @return Stream
-     * This method returns a StreamInterface instance that represents the uploaded file.
-     * The stream can be used to read the contents of the uploaded file.
-     * It is important to note that the stream is read-only and should not be modified.
-     * If the file has already been moved, the stream will still point to the original temporary file.
-     * @throws \RuntimeException
-     * If the file has already been moved, this method will throw a RuntimeException.
-     * This is to prevent accessing the stream after the file has been moved, as the original temporary file may no longer exist.
-     * @return StreamInterface
-     * Returns a StreamInterface instance that represents the uploaded file.
-     * The stream can be used to read the contents of the uploaded file.
-     * It is important to note that the stream is read-only and should not be modified.
-     * If the file has already been moved, the stream will still point to the original temporary file.
-     * @throws \RuntimeException
-     * If the file has already been moved, this method will throw a RuntimeException.
-     * This is to prevent accessing the stream after the file has been moved, as the original temporary file may no longer exist.
+     *
+     * The stream is read-only and points to the temporary uploaded file.
+     *
+     * @return StreamInterface The stream for reading the uploaded file
+     * @throws UploadedFileException If the file has been moved or has an upload error
      */
-	public function getStream(): StreamInterface 
+    public function getStream(): StreamInterface
     {
         if ($this->moved) {
-            throw new RuntimeException('Cannot retrieve stream after file has been moved.');
+            throw new UploadedFileException('Cannot retrieve stream after file has been moved.');
         }
         if ($this->error !== UPLOAD_ERR_OK) {
-            throw new RuntimeException('Cannot retrieve stream due to upload error.');
+            throw new UploadedFileException('Cannot retrieve stream due to upload error.');
         }
+
         return $this->stream;
     }
 
     /**
      * Move the uploaded file to a new location.
-     * @param string $targetPath
-     * The path to the target location where the file should be moved.
-     * This path should be a valid file path on the server where the file will be stored.
-     * The target path should not already exist, as this method will attempt to move the file to that location.
-     * If the target path already exists, the method will throw an exception.
-     * @throws \RuntimeException
-     * If the file has already been moved, this method will throw a RuntimeException.
-     * This is to prevent moving the file multiple times, as the file can only be moved once.
-     * If the move operation fails, this method will also throw a RuntimeException.
-     * This can happen if the target path is not writable, if the file does not exist, or if there are other issues with the file system.
+     *
+     * Creates the target directory if it doesn't exist and validates permissions.
+     * The file can only be moved once.
+     *
+     * @param string $targetPath The destination path for the file
      * @return void
+     * @throws UploadedFileException If the file has been moved, has an upload error, or the move operation fails
      */
-	public function moveTo(string $targetPath): void 
+    public function moveTo(string $targetPath): void
     {
         if ($this->moved) {
-            throw new RuntimeException("The uploaded file `$this->filePath` was already moved.");
+            throw new UploadedFileException("The uploaded file `$this->filePath` was already moved.");
         }
         if ($this->error !== UPLOAD_ERR_OK) {
-            throw new RuntimeException('Cannot move file due to upload error.');
+            throw new UploadedFileException('Cannot move file due to upload error.');
         }
-        if (!move_uploaded_file($this->filePath, $targetPath)) {
-            throw new RuntimeException("Failed to move uploaded file `$this->filePath` to `$targetPath`.");
+        $targetPath = rtrim($targetPath, '/');
+        $targetDir = dirname($targetPath);
+        if ($targetDir === '.' || $targetDir === '') {
+            throw new \InvalidArgumentException("Invalid target path: $targetPath");
+        }
+        if (! is_dir($targetDir) && ! mkdir($targetDir, 0755, true)) {
+            $error = error_get_last();
+            $errorMsg = $error ? $error['message'] : 'Unknown error';
+
+            throw new UploadedFileException("Failed to create target directory `$targetDir`: $errorMsg");
+        }
+        if (! move_uploaded_file($this->filePath, $targetPath)) {
+            $error = error_get_last();
+            $errorMsg = $error ? $error['message'] : 'Unknown error';
+
+            throw new UploadedFileException("Failed to move uploaded file `$this->filePath` to `$targetPath`: $errorMsg");
         }
         $this->moved = true;
     }
@@ -261,7 +264,7 @@ class UploadedFile implements UploadedFileInterface
      * The size is determined at the time of the file upload and is not affected by any subsequent operations.
      * If the file was not uploaded successfully, the size will be 0.
      */
-	public function getSize(): int 
+    public function getSize(): int
     {
         return $this->size;
     }
@@ -274,7 +277,7 @@ class UploadedFile implements UploadedFileInterface
      * The error codes are defined by the PHP constants for file upload errors, such as UPLOAD_ERR_OK, UPLOAD_ERR_INI_SIZE, etc.
      * If the file was uploaded successfully, the error code will be UPLOAD_ERR_OK (0).
      */
-	public function getError(): int 
+    public function getError(): int
     {
         return $this->error;
     }
@@ -286,20 +289,20 @@ class UploadedFile implements UploadedFileInterface
      * The client filename is the name of the file that was uploaded by the user, and it may include the file extension.
      * It is important to note that the client filename may not be unique, and it is recommended to sanitize or rename the file when storing it on the server.
      */
-	public function getClientFilename(): string 
+    public function getClientFilename(): string
     {
         return $this->clientFilename;
     }
 
     /**
      * Get the client media type of the uploaded file.
-     * @return ?string
+     * @return string
      * This method returns the media type of the file as provided by the client.
      * The client media type is typically the MIME type of the file, such as 'image/png', 'text/plain', etc.
      * It is important to note that the client media type may not always be accurate, and it is recommended to validate or sanitize the file type when processing the uploaded file.
      * If the client did not provide a media type, this method will return an empty string.
      */
-	public function getClientMediaType(): string 
+    public function getClientMediaType(): string
     {
         return $this->clientMediaType ?? '';
     }

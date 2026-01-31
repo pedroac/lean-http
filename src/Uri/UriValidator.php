@@ -16,21 +16,22 @@ class UriValidator
      * Reserved characters in URIs as per RFC 3986.
      * These characters are reserved for special purposes and should not be used in certain parts of a URI.
      */
-    const RESERVED = ':/?#[]@!$&\'()*+,;=';
+    public const RESERVED = ':/?#[]@!$&\'()*+,;=';
 
     /**
      * Maximum port number as per RFC 3986.
      * The valid range for port numbers is from 0 to 65535.
      * Ports outside this range are considered invalid.
      */
-    const MAX_PORT = 65535;
+    public const MAX_PORT = 65535;
 
     /**
      * Default instance of the UriValidator.
      * This instance is used when no specific configuration is provided.
      * It uses strict RFC validation by default.
+     * @var UriValidator|null
      */
-    private static $default = null;
+    private static ?UriValidator $default = null;
 
     /**
      * Constructor to initialize the URI validator.
@@ -52,11 +53,10 @@ class UriValidator
      * Returns the default instance of the UriValidator.
      * If the default instance is not set, it creates a new instance with strict RFC validation enabled.
      */
-    public static function getDefault(): static
+    public static function getDefault(): UriValidator
     {
-        if (self::$default === null) {
-            static::$default = new static();
-        }
+        self::$default ??= new self();
+
         return self::$default;
     }
 
@@ -72,34 +72,35 @@ class UriValidator
      * The method checks the following components:
      * - Scheme: Must be a valid URI scheme (e.g., 'http', 'https').
      * - Host: Must be a valid domain name or IP address.
-     * - Port: If present, must be a valid integer within the range of 0 to 65535.  
+     * - Port: If present, must be a valid integer within the range of 0 to 65535.
      */
     public function validateAbsoluteUri(string $uri): bool
     {
         $components = parse_url($uri);
-        if (!$components
-            || !isset($components['scheme'])
-            || !isset($components['host'])
-            || !$this->validateScheme($components['scheme'])
-            || !$this->validateHost($components['host'])
+        if (! $components
+            || ! isset($components['scheme'])
+            || ! isset($components['host'])
+            || ! $this->validateScheme($components['scheme'])
+            || ! $this->validateHost($components['host'])
         ) {
             return false;
         }
-        if (isset($components['port']) && !$this->validatePort((int)$components['port'])) {
+        if (isset($components['port']) && ! $this->validatePort((int)$components['port'])) {
             return false;
         }
-        if (isset($components['path']) && !$this->validatePath($components['path'])) {
+        if (isset($components['path']) && ! $this->validatePath($components['path'])) {
             return false;
         }
-        if (isset($components['query']) && !$this->validateQuery($components['query'])) {
+        if (isset($components['query']) && ! $this->validateQuery($components['query'])) {
             return false;
         }
-        if (isset($components['fragment']) && !$this->validateFragment($components['fragment'])) {
+        if (isset($components['fragment']) && ! $this->validateFragment($components['fragment'])) {
             return false;
         }
+
         return true;
     }
-    
+
     /**
      * Check if a string contains reserved characters.
      * This method checks if the provided string contains any reserved characters as defined by RFC 3986.
@@ -153,10 +154,12 @@ class UriValidator
         if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
             return true;
         }
-        if ($host[0] === '[' && substr($host, -1) === ']') {
+        if ($host[0] === '[' && str_ends_with($host, ']')) {
             $ipv6 = substr($host, 1, -1);
+
             return filter_var($ipv6, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
         }
+
         return filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
     }
 
@@ -219,11 +222,12 @@ class UriValidator
      */
     public function validatePath(string $path): bool
     {
-        if (!$this->strictRFC) {
-            return strcspn($path, '?#' ) === 0;
+        if (! $this->strictRFC) {
+            return strcspn($path, '?#') === 0;
         }
+
         return preg_match(
-            '/^(\/?([a-z0-9\-\.\_\~\!\$\&\'\(\)\*\+\,\;\=\:\@]|(%[a-f0-9]{2}))*)*$/i', 
+            '/^(\/?([a-z0-9\-\.\_\~\!\$\&\'\(\)\*\+\,\;\=\:\@]|(%[a-f0-9]{2}))*)*$/i',
             $path
         ) === 1;
     }
@@ -243,9 +247,10 @@ class UriValidator
      */
     public function validateQuery(string $query): bool
     {
-        if (!$this->strictRFC) {
-            return strcspn($query, '#' ) === 0;
+        if (! $this->strictRFC) {
+            return strcspn($query, '#') === 0;
         }
+
         return preg_match(
             '/^([a-z0-9\-\.\_\~\!\$\&\'\(\)\*\+\,\;\=\:\@\/\?]|(%[a-f0-9]{2,2}))*$/i',
             $query
@@ -266,9 +271,10 @@ class UriValidator
      */
     public function validateFragment(string $fragment): bool
     {
-        if (!$this->strictRFC) {
+        if (! $this->strictRFC) {
             return true;
         }
+
         return preg_match(
             '/^([a-z0-9\-\.\_\~\!\$\&\'\(\)\*\+\,\;\=\:\@\/\?]|(%[a-f0-9]{2}))*/i',
             $fragment

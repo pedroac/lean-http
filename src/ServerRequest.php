@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Pac\LeanHttp;
 
-use Pac\LeanHttp\Request;
+use Pac\LeanHttp\Exception\UploadedFileException;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Message\UriInterface;
-use RuntimeException;
 
 /**
  * Represents an HTTP server request.
@@ -25,19 +25,19 @@ class ServerRequest extends Request implements ServerRequestInterface
      * The URI of the request.
      * @param StreamInterface $body
      * The body of the request.
-     * @param array $headers
+     * @param array<string, string[]> $headers
      * The headers of the request.
-     * @param array $cookieParams
+     * @param array<string, string> $cookieParams
      * The cookie parameters.
-     * @param array $queryParams
+     * @param array<string|int, mixed> $queryParams
      * The query parameters.
-     * @param array $uploadedFiles
+     * @param array<string|int, mixed> $uploadedFiles
      * The uploaded files.
-     * @param array|object|string|null $parsedBody
+     * @param array<string|int, mixed>|object|string|null $parsedBody
      * The parsed body data.
-     * @param array $attributes
+     * @param array<string, mixed> $attributes
      * The attributes of the request.
-     * @param array $serverParams
+     * @param array<string, mixed> $serverParams
      * The server parameters.
      * @param string $requestTarget
      * The request target (default is '/').
@@ -52,14 +52,14 @@ class ServerRequest extends Request implements ServerRequestInterface
         private array $cookieParams = [],
         private array $queryParams = [],
         private array $uploadedFiles = [],
-        private array|object|string|null $parsedBody = null,
+        private array|string|object|null $parsedBody = null,
         private array $attributes = [],
         private array $serverParams = [],
         string $requestTarget = '/',
         ?string $protocolVersion = null
     ) {
-        if (!empty($uploadedFiles) && !UploadedFile::validateTree($uploadedFiles)) {
-            throw new RuntimeException('Invalid uploadedFiles argument: : it must be an array tree of UploadedFileInterface instances.');
+        if (! empty($uploadedFiles) && ! UploadedFile::validateTree($uploadedFiles)) {
+            throw new UploadedFileException('Invalid uploadedFiles argument: it must be an array tree of UploadedFileInterface instances.');
         }
         if ($protocolVersion === null && isset($serverParams['SERVER_PROTOCOL'])) {
             $protocolVersion = substr(
@@ -67,33 +67,25 @@ class ServerRequest extends Request implements ServerRequestInterface
                 strpos($serverParams['SERVER_PROTOCOL'], '/') + 1
             );
         }
-        parent::__construct($method, $uri, $body,$headers, $requestTarget, $protocolVersion);
+        parent::__construct($method, $uri, $body, $headers, $requestTarget, $protocolVersion);
     }
 
     /**
-     * Create a ServerRequest instance from global variables.
-     * This method reads the request data from the global variables ($_SERVER, $_COOKIE, etc.) and creates a ServerRequest instance.
-     * It parses the body, query parameters, and headers from the global variables.
-     * @return self
-     * Returns a new instance of ServerRequest initialized with the data from the global variables.
-     * The method reads the request method, URI, body stream, headers, cookies, query parameters, uploaded files, and server parameters from the global variables.
-     * It also parses the body data and sets it in the parsedBody property.
-     * If the global variables are not set, it uses default values (e.g., 'GET' for the request method).
-     * @throws RuntimeException
-     * If the uploaded files are not valid, it throws a RuntimeException.
-     * If the parsed body data is not an array, object, or null, it throws a RuntimeException.
-     * @throws \InvalidArgumentException
-     * If the uploaded files argument is not a valid array tree of UploadedFileInterface instances, it throws an InvalidArgumentException.
-     * If the parsed body data is not an array, object, or null, it throws an InvalidArgumentException.
-     * @see UploadedFile::fromGlobal() for handling uploaded files.
+     * Create a ServerRequest instance from PHP global variables.
+     *
+     * Reads data from $_SERVER, $_GET, $_POST, $_COOKIE, $_FILES and creates a fully
+     * initialized ServerRequest with parsed body, query parameters, and uploaded files.
+     *
+     * @return self A new ServerRequest instance
+     * @see UploadedFile::fromGlobal() for handling uploaded files
      */
-    static function fromGlobals(): self
+    public static function fromGlobals(): self
     {
-        $stream = new Stream('php://input','rb');
+        $stream = new Stream('php://input', 'rb');
         $queryParams = [];
         $queryString = $_SERVER['QUERY_STRING'] ?? '';
         $uriString = $_SERVER['REQUEST_URI'] ?? null;
-        if (is_string($queryString)) {
+        if (is_string($queryString) && $queryString !== '') {
             parse_str($queryString, $queryParams);
         }
         $instance = new ServerRequest(
@@ -106,18 +98,18 @@ class ServerRequest extends Request implements ServerRequestInterface
             UploadedFile::fromGlobal(),
             null,
             [],
-            filter_input_array(INPUT_SERVER)
+            filter_input_array(INPUT_SERVER) ?: []
         );
         $instance->parsedBody = $instance->parseBody();
+
         return $instance;
     }
 
     /**
-     * Parse the body data from the request.
-     * This method reads the body stream and parses it into an array, object, or string based on the content type.
-     * If the body is empty, it returns null.
-     * @return array|object|string|null
-     * Returns the parsed body data as an array, object, string, or null if the body is empty.
+     * Get all headers from the global $_SERVER array.
+     * This method extracts HTTP headers from $_SERVER and returns them as an associative array.
+     * @return array<string, string[]>
+     * Returns an associative array of header names to arrays of header values.
      */
     public static function getAllHeadersFromGlobal(): array
     {
@@ -129,8 +121,8 @@ class ServerRequest extends Request implements ServerRequestInterface
             }
         } else {
             foreach ($_SERVER as $key => $value) {
-                if (strpos($key, 'HTTP_') === 0) {
-                    $headerName = str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($key, 5)))));
+                if (str_starts_with($key, 'HTTP_')) {
+                    $headerName = str_replace(' ', '-', ucwords(strtolower(strtr(substr($key, 5), '_', ' '))));
                     $headers[$headerName] = $value;
                 } elseif (in_array($key, ['CONTENT_TYPE', 'CONTENT_LENGTH', 'CONTENT_MD5'])) {
                     $headerName = str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', $key))));
@@ -144,6 +136,7 @@ class ServerRequest extends Request implements ServerRequestInterface
                 $headers[$name] = array_map('trim', explode(',', $headers[$name]));
             }
         }
+
         return $headers;
     }
 
@@ -157,7 +150,7 @@ class ServerRequest extends Request implements ServerRequestInterface
      * @return mixed
      * Returns the value of the attribute or the default value if the attribute does not exist.
      */
-    function getAttribute(string $name, $default = null)
+    public function getAttribute(string $name, $default = null)
     {
         return $this->attributes[$name] ?? $default;
     }
@@ -165,11 +158,11 @@ class ServerRequest extends Request implements ServerRequestInterface
     /**
      * Get all attributes of the request.
      * This method returns an associative array of all attributes set in the request.
-     * @return array
+     * @return array<string, mixed>
      * Returns an associative array of attributes.
      * The keys are the attribute names, and the values are the corresponding attribute values.
      */
-    function getAttributes(): array
+    public function getAttributes(): array
     {
         return $this->attributes;
     }
@@ -177,11 +170,11 @@ class ServerRequest extends Request implements ServerRequestInterface
     /**
      * Get the cookie parameters of the request.
      * This method returns an associative array of cookies sent with the request.
-     * @return array
+     * @return array<string, string>
      * Returns an associative array of cookies.
      * The keys are the cookie names, and the values are the corresponding cookie values.
      */
-    function getCookieParams(): array
+    public function getCookieParams(): array
     {
         return $this->cookieParams;
     }
@@ -189,11 +182,11 @@ class ServerRequest extends Request implements ServerRequestInterface
     /**
      * Get the parsed body of the request.
      * This method returns the parsed body data, which can be an array, object, string, or null.
-     * @return array|object|string|null
+     * @return array<string|int, mixed>|object|string|null
      * Returns the parsed body data.
      * If the body is empty or not set, it returns null.
      */
-    function getParsedBody(): array|object|string|null
+    public function getParsedBody(): array|string|object|null
     {
         return $this->parsedBody;
     }
@@ -201,11 +194,11 @@ class ServerRequest extends Request implements ServerRequestInterface
     /**
      * Get the query parameters of the request.
      * This method returns an associative array of query parameters parsed from the request URI.
-     * @return array
+     * @return array<string|int, mixed>
      * Returns an associative array of query parameters.
      * The keys are the parameter names, and the values are the corresponding parameter values.
      */
-    function getQueryParams(): array
+    public function getQueryParams(): array
     {
         return $this->queryParams;
     }
@@ -213,11 +206,11 @@ class ServerRequest extends Request implements ServerRequestInterface
     /**
      * Get the server parameters of the request.
      * This method returns an associative array of server parameters, such as headers and environment variables.
-     * @return array
+     * @return array<string, mixed>
      * Returns an associative array of server parameters.
      * The keys are the parameter names, and the values are the corresponding parameter values.
      */
-    function getServerParams(): array
+    public function getServerParams(): array
     {
         return $this->serverParams;
     }
@@ -225,42 +218,45 @@ class ServerRequest extends Request implements ServerRequestInterface
     /**
      * Get the uploaded files of the request.
      * This method returns an associative array of uploaded files, where the keys are the file names and the values are UploadedFileInterface instances.
-     * @return array
+     * @return array<string|int, mixed>
      * Returns an associative array of uploaded files.
      * The keys are the file names, and the values are UploadedFileInterface instances representing the uploaded files.
      */
-    function getUploadedFiles(): array
+    public function getUploadedFiles(): array
     {
         return $this->uploadedFiles;
     }
 
     /**
-     * Get the request target of the server request.
-     * The request target is the part of the request that identifies the resource being requested.
-     * It can be a path, a path with a query string, or an absolute URI.
-     * @return string
-     * Returns the request target as a string.
+     * Return an instance with the specified attribute added or replaced.
+     * This method adds or replaces an attribute in the request and returns a new instance.
+     * @param string $name The attribute name.
+     * @param mixed $value The attribute value.
+     * @return static
+     * Returns a new ServerRequest instance with the attribute added or replaced.
      */
-    function withAttribute(string $name, $value): ServerRequestInterface
+    public function withAttribute(string $name, $value): ServerRequestInterface
     {
         $clone = clone $this;
         $clone->attributes[$name] = $value;
+
         return $clone;
     }
 
     /**
      * Set the cookie parameters for the server request.
      * This method creates a new instance of the server request with the updated cookie parameters.
-     * @param array $cookies
+     * @param array<string, string> $cookies
      * The cookie parameters to set.
      * It should be an associative array where the keys are cookie names and the values are cookie values.
-     * @return ServerRequestInterface
+     * @return static
      * Returns a new instance of the server request with the updated cookie parameters.
      */
-    function withCookieParams(array $cookies): ServerRequestInterface
+    public function withCookieParams(array $cookies): ServerRequestInterface
     {
         $clone = clone $this;
         $clone->cookieParams = $cookies;
+
         return $clone;
     }
 
@@ -272,10 +268,11 @@ class ServerRequest extends Request implements ServerRequestInterface
      * @return ServerRequestInterface
      * Returns a new instance of the server request without the specified attribute.
      */
-    function withoutAttribute(string $name): ServerRequestInterface
+    public function withoutAttribute(string $name): ServerRequestInterface
     {
         $clone = clone $this;
         unset($clone->attributes[$name]);
+
         return $clone;
     }
 
@@ -285,39 +282,41 @@ class ServerRequest extends Request implements ServerRequestInterface
      * The parsed body can be an array, object, string, or null.
      * @param mixed $data
      * The parsed body data to set.
-     * It must be an array, an object, or null. If it is not, a RuntimeException is thrown.
-     * @return ServerRequestInterface
+     * It must be an array, an object, or null. If it is not, an InvalidArgumentException is thrown.
+     * @return static
      * Returns a new instance of the server request with the updated parsed body.
-     * @throws RuntimeException
-     * If the provided data is not an array, object, or null, it throws a RuntimeException.
+     * @throws \InvalidArgumentException
+     * If the provided data is not an array, object, or null, it throws an InvalidArgumentException.
      */
-    function withParsedBody(mixed $data): ServerRequestInterface
+    public function withParsedBody(mixed $data): ServerRequestInterface
     {
         if (
-            !is_array($data)
-            && !is_object($data)
+            ! is_array($data)
+            && ! is_object($data)
             && $data !== null
         ) {
-            throw new RuntimeException('Invalid argument: it must be an array, an object or null.');
+            throw new \InvalidArgumentException('Invalid argument: it must be an array, an object or null.');
         }
         $clone = clone $this;
         $clone->parsedBody = $data;
+
         return $clone;
     }
 
     /**
      * Set the query parameters for the server request.
      * This method creates a new instance of the server request with the updated query parameters.
-     * @param array $query
+     * @param array<string|int, mixed> $query
      * The query parameters to set.
      * It should be an associative array where the keys are parameter names and the values are parameter values.
-     * @return ServerRequestInterface
+     * @return static
      * Returns a new instance of the server request with the updated query parameters.
      */
-    function withQueryParams(array $query): ServerRequestInterface
+    public function withQueryParams(array $query): ServerRequestInterface
     {
         $clone = clone $this;
         $clone->queryParams = $query;
+
         return $clone;
     }
 
@@ -325,21 +324,22 @@ class ServerRequest extends Request implements ServerRequestInterface
      * Set the uploaded files for the server request.
      * This method creates a new instance of the server request with the updated uploaded files.
      * The uploaded files must be a valid array tree of UploadedFileInterface instances.
-     * @param array $uploadedFiles
+     * @param array<string|int, mixed> $uploadedFiles
      * The uploaded files to set.
      * It should be an array tree of UploadedFileInterface instances.
-     * @return ServerRequestInterface
+     * @return static
      * Returns a new instance of the server request with the updated uploaded files.
      * @throws \InvalidArgumentException
      * If the provided argument is not a valid array tree of UploadedFileInterface instances, it throws an InvalidArgumentException.
      */
-    function withUploadedFiles(array $uploadedFiles): ServerRequestInterface
+    public function withUploadedFiles(array $uploadedFiles): ServerRequestInterface
     {
-        if (!UploadedFile::validateTree($uploadedFiles)) {
+        if (! UploadedFile::validateTree($uploadedFiles)) {
             throw new \InvalidArgumentException('Invalid argument: it must be an array tree of UploadedFileInterface instances.');
         }
         $clone = clone $this;
         $clone->uploadedFiles = $uploadedFiles;
+
         return $clone;
     }
 }

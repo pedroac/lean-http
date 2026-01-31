@@ -12,8 +12,9 @@ class UriNormalizer
      * Default normalizer instance.
      * This instance is used when no specific normalizer is provided.
      * It is initialized with default settings: punny code enabled and query sorting disabled.
+     * @var UriNormalizer|null
      */
-    private static $defaultNormalizer;
+    private static ?UriNormalizer $defaultNormalizer = null;
 
     /**
         * Constructor to initialize the URI normalizer.
@@ -32,21 +33,20 @@ class UriNormalizer
 
     /**
      * Return the default UriNormalizer instance.
-     * @return UriNormalizer
+     * @return self
      * This method returns a singleton instance of the UriNormalizer class.
      * If the instance does not exist, it will be created with default settings.
      */
-    public static function getDefault(): static
+    public static function getDefault(): self
     {
-        if (!isset(self::$defaultNormalizer)) {
-            self::$defaultNormalizer = new static;
-        }
+        self::$defaultNormalizer ??= new self();
+
         return self::$defaultNormalizer;
     }
 
     /**
      * Return the specified string normalized following the RFC 3986 encoding rules, avoiding double encoding.
-     * 
+     *
      * This method:
      * - Decodes percent-encoded octets corresponding to unreserved characters.
      * - Normalizes hexadecimal digits in percent-encoding (e.g., converts "%3a" to "%3A").
@@ -55,7 +55,7 @@ class UriNormalizer
      * Examples:
      * - If $original is "abc%20def", the method returns "abc%20def".
      * - If $original is "special&chars", the method returns "special%26chars".
-     * 
+     *
      * This method is not intended for normalizing an entire URL.
      * It encodes reserved characters ("/", ":", "?", and "#") and does not re-encode percent-encoded octets.
      * Unreserved characters (digits, ASCII letters, "-", ".", "_", and "~") are left unchanged.
@@ -93,9 +93,10 @@ class UriNormalizer
      */
     public function normalizeScheme(string $scheme): string
     {
-        if (!(UriValidator::getDefault())->validateScheme($scheme)) {
+        if (! (UriValidator::getDefault())->validateScheme($scheme)) {
             throw new \InvalidArgumentException("Can't normalize invalid scheme.");
         }
+
         return strtolower($scheme);
     }
 
@@ -122,9 +123,10 @@ class UriNormalizer
      */
     public function normalizeIpv4(string $ipv4): string
     {
-        if (!(UriValidator::getDefault())->validateIpv4($ipv4)) {
+        if (! (UriValidator::getDefault())->validateIpv4($ipv4)) {
             throw new \InvalidArgumentException("Invalid IPv4: $ipv4.");
         }
+
         return $this->normalizeIpv4WithoutValidation($ipv4);
     }
 
@@ -153,13 +155,14 @@ class UriNormalizer
         $octets = explode('.', $ipv4);
         foreach ($octets as &$octet) {
             $int = (int)$octet;
-            if (($int == 0 && !ctype_digit($octet)) || $int < 0 || $int > 255) {
+            if (($int == 0 && ! ctype_digit($octet)) || $int < 0 || $int > 255) {
                 throw new \InvalidArgumentException("Invalid IPv4: $ipv4.");
             }
             $octet = (string)$int;
         }
         $normalized = join('.', $octets);
         assert(filter_var($normalized, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4));
+
         return $normalized;
     }
 
@@ -192,9 +195,10 @@ class UriNormalizer
      */
     public function normalizeIpv6(string $ipv6): string
     {
-        if (!(UriValidator::getDefault())->validateIpv6($ipv6)) {
+        if (! (UriValidator::getDefault())->validateIpv6($ipv6)) {
             throw new \InvalidArgumentException("Invalid IPv6: $ipv6.");
         }
+
         return $this->normalizeIpv6WithoutValidation($ipv6);
     }
 
@@ -223,8 +227,12 @@ class UriNormalizer
         if (function_exists('inet_pton')) {
             $packed = inet_pton($ipv6);
             if ($packed !== false) {
-                $normalized = strtolower(inet_ntop($packed));
-                return "[$normalized]";
+                $ntop = inet_ntop($packed);
+                if ($ntop !== false) {
+                    $normalized = strtolower($ntop);
+
+                    return "[$normalized]";
+                }
             }
         }
 
@@ -243,7 +251,9 @@ class UriNormalizer
         // Normalize each block by removing leading zeros
         foreach ($blocks as &$block) {
             $block = ltrim($block, '0');
-            if ($block === '') $block = '0';
+            if ($block === '') {
+                $block = '0';
+            }
         }
 
         // Find the longest sequence of consecutive zeros to replace with "::"
@@ -253,10 +263,13 @@ class UriNormalizer
         while ($i < count($blocks)) {
             if ($blocks[$i] !== '0') {
                 $i++;
+
                 continue;
             }
             $start = $i;
-            while ($i < count($blocks) && $blocks[$i] === '0') $i++;
+            while ($i < count($blocks) && $blocks[$i] === '0') {
+                $i++;
+            }
             $len = $i - $start;
             if ($len > $bestLen) {
                 $bestStart = $start;
@@ -268,13 +281,18 @@ class UriNormalizer
         if ($bestLen > 1) {
             array_splice($blocks, $bestStart, $bestLen, ['']);
             // Adjust the start and end of the blocks
-            if ($bestStart === 0) array_unshift($blocks, '');
-            if ($bestStart + $bestLen === 8) array_push($blocks, '');
+            if ($bestStart === 0) {
+                array_unshift($blocks, '');
+            }
+            if ($bestStart + $bestLen === 8) {
+                array_push($blocks, '');
+            }
         }
 
         $normalized = implode(':', $blocks);
         // Fail in case of an invalid IPv6 address (bug)
         assert(filter_var($normalized, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6));
+
         return "[$normalized]";
     }
 
@@ -303,18 +321,20 @@ class UriNormalizer
      */
     public function normalizeHostname(string $host): string
     {
-        if (!(UriValidator::getDefault())->validateHost($host)) {
+        if (! (UriValidator::getDefault())->validateHost($host)) {
             throw new \InvalidArgumentException("Can't normalize invalid host: $host.");
         }
         if ($this->forcePunnyCode) {
-            if (!function_exists('idn_to_ascii')) {
+            if (! function_exists('idn_to_ascii')) {
                 throw new \InvalidArgumentException('IDN to ASCII conversion is not supported on this system.');
             }
             $ascii = idn_to_ascii($host, IDNA_NONTRANSITIONAL_TO_ASCII | IDNA_USE_STD3_RULES);
             if ($ascii === false) {
                 throw new \InvalidArgumentException("Invalid host: $host.");
             }
+            $host = $ascii;
         }
+
         return strtolower($host);
     }
 
@@ -345,10 +365,11 @@ class UriNormalizer
     public function normalizeHost(string $host): string
     {
         if ($host[0] === '[') {
-            if (substr($host, -1) !== ']') {
+            if (! str_ends_with($host, ']')) {
                 throw new \InvalidArgumentException("Invalid host: $host.");
             }
             $ip = substr($host, 1, -1);
+
             return $this->normalizeIpv6($ip);
         }
         if (preg_match('/^(?:\d{1,3}\.){3}\d{1,3}$/', $host) === 1) {
@@ -357,6 +378,7 @@ class UriNormalizer
         if ((UriValidator::getDefault())->validateIpv6($host)) {
             return $this->normalizeIpv6($host);
         }
+
         return $this->normalizeHostname($host);
     }
 
@@ -392,6 +414,7 @@ class UriNormalizer
         if ($password !== null) {
             $userInfo .= ':' . $this->normalizeEncode($password);
         }
+
         return $userInfo;
     }
 
@@ -400,7 +423,7 @@ class UriNormalizer
      * This method normalizes the port number to ensure it is valid and not the default port for the specified scheme.
      * RFC 3986: "If a port is not specified, the default port for the scheme is implied."
      * @see https://www.rfc-editor.org/rfc/rfc3986
-     * @param mixed $port
+     * @param int|null $port
      * This parameter can be an integer representing the port number or null.
      * @param string $scheme
      * This parameter is the scheme that should be used to determine the default port.
@@ -427,10 +450,11 @@ class UriNormalizer
         if ($port === null) {
             return null;
         }
-        if (!(UriValidator::getDefault())->validatePort($port)) {
+        if (! (UriValidator::getDefault())->validatePort($port)) {
             throw new \InvalidArgumentException("Invalid port: $port.");
         }
         $schemePort = SchemePort::fromScheme($scheme);
+
         return $schemePort?->value !== $port
             ? $port
             : null;
@@ -469,19 +493,19 @@ class UriNormalizer
      * The returned path will be in a canonical form.
      */
     public function normalizePath(
-    string $path,
-    bool $normalizeRelative = false
+        string $path,
+        bool $normalizeRelative = false
     ): string {
         if ($path === '' || $path === '/') {
             return $normalizeRelative ? '/' : $path;
         }
         // Remove leading and trailing slashes
         $leadSlash = $normalizeRelative ? '/' : ($path[0] === '/' ? '/' : '');
-        $tailSlash = substr($path,-1) === '/' ? '/' : '';
+        $tailSlash = substr($path, -1) === '/' ? '/' : '';
         $segments = [];
         $inputSegments = explode('/', $path);
         $index = 0;
-        if ($leadSlash != '/' && !$normalizeRelative) {
+        if ($leadSlash != '/' && ! $normalizeRelative) {
             // If the path is relative and does not start with a slash, we need to handle dot segments
             for (; isset($inputSegments[$index]); ++$index) {
                 $segment = $inputSegments[$index];
@@ -491,7 +515,7 @@ class UriNormalizer
                 // If we encounter a double dot segment, we need to pop the last segment if it exists
                 if ($segment === '..') {
                     $segments[] = '..';
-                } else if ($segment !== '.') {
+                } elseif ($segment !== '.') {
                     break;
                 }
             }
@@ -507,6 +531,7 @@ class UriNormalizer
                 $segments[] = $this->normalizeEncode($segment);
             }
         }
+
         // If the path is relative and starts with a dot, we need to add a leading slash
         return $leadSlash . implode('/', $segments) . $tailSlash;
     }
@@ -558,7 +583,7 @@ class UriNormalizer
             }
             $encodedPairs[] = "$encodedKey=$encodedValue";
         }
-        
+
         return implode('&', $encodedPairs);
     }
 }

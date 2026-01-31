@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Pac\LeanHttp\Tests;
 
+use Pac\LeanHttp\Stream;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
-use Pac\LeanHttp\Stream;
 
 class StreamTest extends TestCase
 {
@@ -152,7 +152,7 @@ class StreamTest extends TestCase
     {
         $stream = new Stream($this->tempFile, 'w+');
         $stream->write('aaa');
-        $stream->apply(fn($filePointer) => fwrite($filePointer, 'bbb'));
+        $stream->apply(fn ($filePointer) => fwrite($filePointer, 'bbb'));
         $stream->rewind();
         $this->assertEquals('aaabbb', $stream->getContents());
     }
@@ -222,7 +222,8 @@ class StreamTest extends TestCase
 </book>'),
             'application/xml'
         );
-        $this->assertSame('<?xml version="1.0"?>
+        $this->assertSame(
+            '<?xml version="1.0"?>
 <book>
     <title>1984</title>
     <author>George Orwell</author>
@@ -239,7 +240,8 @@ class StreamTest extends TestCase
     <author>George Orwell</author>
 </book>');
         $stream->writeByContentType($dom, 'text/xml');
-        $this->assertSame('<?xml version="1.0"?>
+        $this->assertSame(
+            '<?xml version="1.0"?>
 <book>
     <title>1984</title>
     <author>George Orwell</author>
@@ -247,7 +249,7 @@ class StreamTest extends TestCase
 ',
             (string) $stream
         );
-    
+
         $this->expectException(\InvalidArgumentException::class);
         $stream->writeByContentType(
             'hello',
@@ -270,7 +272,8 @@ class StreamTest extends TestCase
             $dom,
             'text/html'
         );
-        $this->assertSame('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">
+        $this->assertSame(
+            '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">
 <html>
     <head>
         <title>hello</title>
@@ -278,7 +281,7 @@ class StreamTest extends TestCase
     <body></body>
 </html>
 ',
-    (string) $stream
+            (string) $stream
         );
     }
 }

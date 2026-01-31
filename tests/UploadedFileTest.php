@@ -27,12 +27,12 @@ class UploadedFileTest extends TestCase
     protected function setUp(): void
     {
         // TODO: Stop using namespaces for global functions.
-        $this->isUploadedFileMock = (new MockBuilder)
+        $this->isUploadedFileMock = (new MockBuilder())
             ->setNamespace('Pac\LeanHttp')
             ->setName('is_uploaded_file')
             ->setFunctionProvider(new FixedValueFunction(true))
             ->build();
-        $this->moveUploadedFileMock = (new MockBuilder)
+        $this->moveUploadedFileMock = (new MockBuilder())
             ->setNamespace('Pac\LeanHttp')
             ->setName('move_uploaded_file')
             ->setFunction(function (string $from, string $to) {
@@ -207,7 +207,7 @@ class UploadedFileTest extends TestCase
     public function testMoveToThrowsExceptionIfMoveFails(): void
     {
         $this->moveUploadedFileMock->disable();
-        $this->moveUploadedFileMock = (new MockBuilder)
+        $this->moveUploadedFileMock = (new MockBuilder())
             ->setNamespace('Pac\LeanHttp')
             ->setName('move_uploaded_file')
             ->setFunctionProvider(new FixedValueFunction(false))
@@ -247,7 +247,7 @@ class UploadedFileTest extends TestCase
             'name' => 'example.txt',
             'type' => 'text/plain',
             'size' => 12,
-            'error' => UPLOAD_ERR_OK
+            'error' => UPLOAD_ERR_OK,
         ];
 
         $uploadedFile = UploadedFile::fromArray($data);
